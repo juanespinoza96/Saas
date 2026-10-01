@@ -1,0 +1,38 @@
+{
+  "//": "Plantilla de configuracion MCP. Copiar a .kiro/settings/mcp.json y rellenar",
+  "//_secretos": "NUNCA versionar .kiro/settings/mcp.json con valores reales. Los secretos se resuelven por variables de entorno del usuario.",
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "${SAASPOS_DB_CONNECTION}"
+      ],
+      "disabled": false,
+      "autoApprove": []
+    },
+    "aws-docs": {
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-documentation-mcp-server@latest"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": []
+    },
+    "postman": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@postman/postman-mcp-server"
+      ],
+      "env": {
+        "POSTMAN_API_KEY": "${POSTMAN_API_KEY}"
+      },
+      "disabled": false
+    }
+  }
+}

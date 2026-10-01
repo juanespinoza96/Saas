@@ -1,0 +1,91 @@
+# ─── .NET ─────────────────────────────────────────────────────────
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+*.vs/
+
+# ─── Archivos con credenciales reales (NUNCA versionar) ───────────
+appsettings.Development.json
+appsettings.*.local.json
+*.local.json
+
+# ─── User Secrets (local) ─────────────────────────────────────────
+secrets.json
+
+# ─── Configuración MCP local (contiene connection strings / API keys) ─
+.kiro/settings/mcp.json
+!mcp.json.example
+
+# ─── Kiro: todo su contenido va en un repositorio privado aparte ──
+# El repo público del proyecto NO versiona nada de Kiro ni de agentes.
+.kiro/
+.agents/
+
+# ─── Credenciales de usuarios de prueba (no versionar) ────────────
+credenciales-pruebas.txt
+
+# ─── Utilidad desechable para generar hashes (sin fuente, sin uso) ─
+hash-gen/
+
+# ─── Documentación binaria pesada (no versionar en repo público) ──
+*.pdf
+
+# ─── Variables de entorno locales ─────────────────────────────────
+.env
+.env.*
+!.env.example
+set-env-dev.cmd
+set-env-dev.ps1
+set-env-dev.sh
+
+# ─── Node / Frontend ─────────────────────────────────────────────
+node_modules/
+dist/
+.auth/
+
+# ─── Artefactos de ejecución de tests (NO el código de tests) ─────
+# Reportes y resultados generados por Vitest / Playwright / dotnet test.
+# Barra inicial de "/" omitida a propósito: deben aplicar en cualquier nivel.
+test-results/
+TestResults/
+playwright-report/
+*.trx
+*.tsbuildinfo
+coverage/
+# Salidas temporales de corridas de test (archivos sueltos en SaasPOS.Web)
+.tmp_*.txt
+vt-*.txt
+vt-*.json
+vitest-*.json
+vitest-*.txt
+test-results.json
+
+# Salidas temporales de corridas de test del backend (SaasPOS.Tests)
+pbt-*.txt
+task*-run.txt
+docker-check.txt
+existing-tests.txt
+testhosts.txt
+
+# ─── IDE ──────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+
+# ─── Archivos temporales de sesiones Kiro (logs de build/test) ────
+build-*.txt
+build_*.txt
+bug-*.txt
+bug2-*.txt
+test-result*.txt
+test-*.txt
+test_*.txt
+testout*.txt
+TESTING.md
+
+# ─── OS ───────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store

@@ -1,0 +1,370 @@
+================================================================================
+     MANUAL DE REPORTERÍA — SISTEMA SaaS POS MULTIPROPÓSITO
+================================================================================
+
+                         GUÍA COMPLETA DE FUNCIONAMIENTO
+                    Diferenciación por planes de suscripción
+
+================================================================================
+
+
+1. INTRODUCCIÓN
+================================================================================
+
+El módulo de reportería del sistema SaaS POS permite a los comercios obtener 
+información consolidada sobre su rendimiento de ventas. Este módulo está 
+implementado a través del componente Report_Engine en el backend y se accede 
+desde la pantalla "Reportes" del Frontend POS.
+
+La funcionalidad de reportería está directamente vinculada al plan contratado 
+por cada comercio. Esto significa que no todos los comercios tienen acceso a las 
+mismas capacidades — el plan actúa como un interruptor que habilita o bloquea 
+funciones de análisis de datos.
+
+
+2. ARQUITECTURA TÉCNICA DEL MÓDULO
+================================================================================
+
+2.1 Componente principal: Report_Engine
+------------------------------------------------------------------------------
+
+El Report_Engine es un servicio interno del backend con la siguiente interfaz:
+
+  • GenerarReporteAsync(request, comercioId, planNivel)
+    → Genera el reporte según tipo y parámetros
+  • ExportarPdfAsync(reporte)
+    → Convierte el resultado a formato PDF descargable
+  • ExportarCsvAsync(reporte)
+    → Convierte el resultado a formato CSV descargable
+
+2.2 Endpoints de la API
+------------------------------------------------------------------------------
+
+  GET /api/tenants/reportes/top-producto
+    → Producto con mayor cantidad vendida (Plan Intermedio+)
+
+  GET /api/tenants/reportes/top-categoria
+    → Categoría con mayor monto de ventas (Plan Intermedio+)
+
+  GET /api/tenants/reportes/top-sucursal
+    → Sucursal con mayor monto total de ventas (Plan Intermedio+)
+
+  GET /api/tenants/reportes/personalizado
+    → Reporte con filtros avanzados (solo Plan Empresarial)
+
+  GET /api/tenants/reportes/{reporteId}/exportar?formato=pdf|csv
+    → Exportar cualquier reporte generado a PDF o CSV
+
+2.3 Fuente de datos
+------------------------------------------------------------------------------
+
+TODOS los cálculos de reportería se basan exclusivamente en las tablas:
+
+  • Ventas (cabecera de cada transacción)
+  • DetalleVentas (líneas individuales de cada venta)
+
+Los datos se filtran SIEMPRE por el ComercioId del usuario autenticado, 
+garantizando que un comercio nunca vea información de otro comercio.
+
+2.4 Roles con acceso a reportería
+------------------------------------------------------------------------------
+
+Solo los siguientes roles pueden acceder a la pantalla de reportes:
+
+  • Gerente ✓
+  • Dueño ✓ (solo Plan Empresarial)
+  • Supervisor ✓ (solo Plan Empresarial)
+
+Los roles Cajero y Bodeguero NO tienen acceso a reportes bajo ninguna 
+circunstancia. El sidebar del POS oculta la opción de reportes para estos roles.
+
+
+3. DIFERENCIACIÓN POR PLAN CONTRATADO
+================================================================================
+
+
+3.1 PLAN BÁSICO ($350/mes)
+==============================================================================
+
+ESTADO: COMPLETAMENTE BLOQUEADO
+
+Comportamiento:
+  • El acceso a TODA funcionalidad de reportería está bloqueado.
+  • Si un usuario intenta acceder al endpoint de reportes, la API responde 
+    con HTTP 403 (Forbidden).
+  • En el Frontend POS, la sección "Reportes" está completamente OCULTA en 
+    el sidebar y no es navegable.
+  • No se puede generar, visualizar ni exportar ningún reporte.
+  • Esto aplica independientemente del rol del usuario (incluso un Gerente 
+    en Plan Básico no puede ver reportes).
+
+Motivo del bloqueo:
+  El Plan Básico está diseñado para comercios de operación mínima (1 sucursal, 
+  2 usuarios). La reportería es un valor agregado de los planes superiores 
+  que incentiva la migración a un plan con más capacidades.
+
+Respuesta técnica al intentar acceder:
+  HTTP 403 Forbidden
+  { "error": "Su plan actual no incluye acceso a reportes", "code": "PLAN_LIMIT" }
+
+
+3.2 PLAN INTERMEDIO ($750/mes)
+==============================================================================
+
+ESTADO: ACCESO LIMITADO — 3 REPORTES PREDEFINIDOS
+
+Reportes disponibles:
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ REPORTE 1: Producto con mayor cantidad vendida                      │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │ Endpoint: GET /api/tenants/reportes/top-producto                    │
+  │ Muestra: El producto que más unidades se vendió en el mes actual    │
+  │ Datos: Nombre del producto, cantidad total vendida, monto generado  │
+  │ Período: Solo mes en curso (no permite seleccionar otro período)    │
+  │ Filtros: NINGUNO                                                    │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ REPORTE 2: Categoría con mayor monto de ventas                      │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │ Endpoint: GET /api/tenants/reportes/top-categoria                   │
+  │ Muestra: La categoría de productos que más ingresos generó          │
+  │ Datos: Nombre de categoría, monto total acumulado, % del total      │
+  │ Período: Solo mes en curso                                          │
+  │ Filtros: NINGUNO                                                    │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ REPORTE 3: Sucursal con mayor monto total de ventas                 │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │ Endpoint: GET /api/tenants/reportes/top-sucursal                    │
+  │ Muestra: La sucursal que más ingresos generó en el mes              │
+  │ Datos: Nombre de sucursal, monto total, número de transacciones     │
+  │ Período: Solo mes en curso                                          │
+  │ Filtros: NINGUNO                                                    │
+  └─────────────────────────────────────────────────────────────────────┘
+
+Restricciones del Plan Intermedio:
+
+  ✗ NO permite seleccionar rango de fechas personalizado
+  ✗ NO permite filtrar por sucursal específica
+  ✗ NO permite filtrar por categoría específica
+  ✗ NO permite filtrar por producto específico
+  ✗ NO permite filtrar por método de pago
+  ✗ NO permite reportes personalizables ni combinaciones de filtros
+
+  ✓ SÍ permite exportar los 3 reportes a PDF
+  ✓ SÍ permite exportar los 3 reportes a CSV
+
+Experiencia en el Frontend POS:
+  • La sección "Reportes" es VISIBLE en el sidebar
+  • Al acceder, el usuario ve los 3 reportes como tarjetas o botones
+  • Cada reporte muestra su resultado del mes actual al hacer clic
+  • Los botones de exportación (PDF/CSV) están disponibles en cada reporte
+  • NO se muestra ningún campo de filtro ni selector de fechas
+
+Período de cálculo:
+  El mes en curso se define como: desde el día 1 del mes actual a las 00:00:00 
+  hasta el momento actual de la consulta. Esto significa que los datos son 
+  acumulativos y se actualizan en tiempo real con cada nueva venta registrada.
+
+
+3.3 PLAN EMPRESARIAL ($1200/mes)
+==============================================================================
+
+ESTADO: ACCESO COMPLETO — REPORTES PREDEFINIDOS + PERSONALIZABLES
+
+Incluye todo lo del Plan Intermedio MÁS:
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ REPORTES PREDEFINIDOS (los mismos 3 del Plan Intermedio)            │
+  │ • Top producto por cantidad vendida                                 │
+  │ • Top categoría por monto de ventas                                 │
+  │ • Top sucursal por monto total                                      │
+  │ PERO: con la capacidad adicional de aplicar filtros sobre ellos     │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ REPORTES PERSONALIZABLES                                            │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │ Endpoint: GET /api/tenants/reportes/personalizado                   │
+  │                                                                     │
+  │ Filtros disponibles:                                                │
+  │   • Rango de fechas (fecha inicio - fecha fin)                      │
+  │   • Sucursal específica o todas                                     │
+  │   • Categoría específica o todas                                    │
+  │   • Producto específico o todos                                     │
+  │   • Método de pago (Efectivo, TarjetaCredito, TarjetaDebito,        │
+  │     Transferencia) o todos                                          │
+  │                                                                     │
+  │ Combinaciones:                                                      │
+  │   Todos los filtros son combinables entre sí. El usuario puede      │
+  │   aplicar uno, varios o todos simultáneamente.                      │
+  └─────────────────────────────────────────────────────────────────────┘
+
+Capacidades completas del Plan Empresarial:
+
+  ✓ Los 3 reportes predefinidos del Plan Intermedio
+  ✓ Filtros personalizados en todos los reportes
+  ✓ Selección de rango de fechas arbitrario (no solo mes actual)
+  ✓ Filtrado por sucursal específica
+  ✓ Filtrado por categoría de producto
+  ✓ Filtrado por producto individual
+  ✓ Filtrado por método de pago
+  ✓ Combinación libre de múltiples filtros
+  ✓ Exportación a PDF
+  ✓ Exportación a CSV
+
+Experiencia en el Frontend POS:
+  • La sección "Reportes" es VISIBLE en el sidebar
+  • Al acceder, el usuario ve los 3 reportes predefinidos + un botón 
+    "Reporte personalizado"
+  • Los reportes predefinidos incluyen un panel de filtros desplegable
+  • El reporte personalizado abre un formulario con todos los selectores 
+    de filtro disponibles
+  • Se muestran selectores de fecha (date picker) para rango personalizado
+  • Se muestran dropdowns para Sucursal, Categoría, Producto y Método de Pago
+  • Los resultados se renderizan en tabla con opción de exportar
+
+
+4. PROCESO COMPLETO DE GENERACIÓN DE UN REPORTE
+================================================================================
+
+A continuación se describe el flujo paso a paso desde que el usuario solicita 
+un reporte hasta que obtiene el resultado:
+
+PASO 1 — Verificación de acceso
+  El Subscription_Middleware verifica el plan del comercio:
+    • Plan Básico → HTTP 403 inmediato, fin del flujo
+    • Plan Intermedio → permite solo endpoints predefinidos sin parámetros
+    • Plan Empresarial → permite todos los endpoints con filtros
+
+PASO 2 — Verificación de rol
+  Las Authorization Policies verifican que el usuario tenga un rol permitido:
+    • Gerente, Dueño o Supervisor → permitido
+    • Cajero o Bodeguero → HTTP 403
+
+PASO 3 — Validación de parámetros (solo Plan Empresarial)
+  Si el usuario envió filtros:
+    • Valida formato de fechas
+    • Valida que SucursalId pertenezca al ComercioId del usuario
+    • Valida que CategoriaId pertenezca al ComercioId
+    • Valida que ProductoId pertenezca al ComercioId
+    • Valida que MetodoPago sea uno de los valores permitidos
+  Si alguna validación falla → HTTP 422 con detalle del error
+
+PASO 4 — Construcción de la consulta
+  El Report_Engine construye la query SQL sobre Ventas + DetalleVentas:
+    • SIEMPRE incluye: WHERE Ventas.ComercioId = @comercioId
+    • Plan Intermedio: agrega filtro de mes actual automáticamente
+      (FechaVenta >= primer día del mes AND FechaVenta <= ahora)
+    • Plan Empresarial: agrega los filtros proporcionados por el usuario
+
+PASO 5 — Ejecución y cálculo
+  La query se ejecuta contra PostgreSQL y el Report_Engine procesa:
+    • Top producto: GROUP BY ProductoId, SUM(Cantidad), ORDER BY DESC
+    • Top categoría: JOIN con Productos/Categorias, SUM(Cantidad * Precio)
+    • Top sucursal: GROUP BY SucursalId, SUM(Total)
+    • Personalizado: agrega los filtros adicionales a la base query
+
+PASO 6 — Respuesta al cliente
+  El resultado se devuelve como JSON con la estructura del reporte.
+  El frontend renderiza los datos en tabla y/o gráficos.
+
+PASO 7 — Exportación (opcional)
+  Si el usuario solicita exportación:
+    • GET /api/tenants/reportes/{reporteId}/exportar?formato=pdf
+    • GET /api/tenants/reportes/{reporteId}/exportar?formato=csv
+  El Report_Engine toma el resultado previamente generado y lo convierte 
+  al formato solicitado, devolviendo el archivo como descarga.
+
+
+5. TABLA COMPARATIVA RESUMEN
+================================================================================
+
+┌──────────────────────────┬──────────┬─────────────┬──────────────┐
+│ Funcionalidad            │ Básico   │ Intermedio  │ Empresarial  │
+├──────────────────────────┼──────────┼─────────────┼──────────────┤
+│ Acceso a reportes        │    ✗     │     ✓       │      ✓       │
+│ Sección visible en POS   │    ✗     │     ✓       │      ✓       │
+│ Top producto             │    ✗     │     ✓       │      ✓       │
+│ Top categoría            │    ✗     │     ✓       │      ✓       │
+│ Top sucursal             │    ✗     │     ✓       │      ✓       │
+│ Reporte personalizado    │    ✗     │     ✗       │      ✓       │
+│ Filtro por fecha         │    ✗     │     ✗       │      ✓       │
+│ Filtro por sucursal      │    ✗     │     ✗       │      ✓       │
+│ Filtro por categoría     │    ✗     │     ✗       │      ✓       │
+│ Filtro por producto      │    ✗     │     ✗       │      ✓       │
+│ Filtro por método pago   │    ✗     │     ✗       │      ✓       │
+│ Período personalizado    │    ✗     │     ✗       │      ✓       │
+│ Solo mes actual          │   N/A    │     ✓       │   Opcional   │
+│ Exportar a PDF           │    ✗     │     ✓       │      ✓       │
+│ Exportar a CSV           │    ✗     │     ✓       │      ✓       │
+└──────────────────────────┴──────────┴─────────────┴──────────────┘
+
+
+6. CASOS DE USO PRÁCTICOS
+================================================================================
+
+CASO 1: Gerente en Plan Básico intenta ver reportes
+  → El sidebar no muestra la opción "Reportes"
+  → Si intenta acceder por URL directa al endpoint, recibe HTTP 403
+  → Resultado: Sin acceso
+
+CASO 2: Gerente en Plan Intermedio quiere saber su producto estrella
+  → Entra a la sección "Reportes" en el sidebar
+  → Hace clic en "Top Producto"
+  → El sistema consulta todas las ventas del mes actual
+  → Muestra: "Zapato Deportivo Nike Air — 847 unidades vendidas — $42,350.00"
+  → Puede exportar a PDF o CSV
+  → NO puede cambiar el período ni aplicar filtros
+
+CASO 3: Gerente en Plan Empresarial quiere analizar ventas con tarjeta 
+         en su sucursal norte durante el último trimestre
+  → Entra a "Reportes" → "Reporte Personalizado"
+  → Selecciona: Fecha inicio = 01/03/2026, Fecha fin = 31/05/2026
+  → Selecciona: Sucursal = "Norte"
+  → Selecciona: Método de pago = "TarjetaCredito"
+  → Genera el reporte
+  → Ve el desglose completo de ventas con tarjeta de crédito en esa sucursal
+  → Exporta a CSV para análisis en Excel
+
+CASO 4: Supervisor en Plan Empresarial monitorea rendimiento por categoría
+  → Accede a "Reportes" → "Top Categoría"
+  → Despliega el panel de filtros
+  → Selecciona: Sucursal = "Todas", Período = "Último mes"
+  → Ve qué categoría generó más ingresos en todas las sucursales
+  → Compara con el reporte de Top Sucursal para cruzar información
+
+
+7. CONSIDERACIONES TÉCNICAS
+================================================================================
+
+7.1 Rendimiento
+  • Los índices idx_ventas_comercio e idx_ventas_metodo_pago optimizan las 
+    consultas de reportería
+  • Para comercios con alto volumen de ventas, las queries están optimizadas 
+    con filtros de ComercioId que aprovechan el índice primario
+
+7.2 Seguridad de datos
+  • Cada reporte SIEMPRE filtra por ComercioId del JWT
+  • No existe forma de consultar datos de otro comercio a través de reportes
+  • El filtro es obligatorio e inyectado por el backend, no por el frontend
+
+7.3 Consistencia
+  • Los reportes reflejan datos en tiempo real (no hay caché intermedio)
+  • Si se registra una venta y se genera el reporte inmediatamente después, 
+    la venta aparecerá en los resultados
+  • Los datos se basan en FechaVenta, no en fecha de creación del registro
+
+7.4 Formato de exportación
+  • PDF: Formato tabular con cabecera del comercio, fecha de generación, 
+    filtros aplicados y tabla de resultados
+  • CSV: Formato plano con headers en la primera fila, separado por comas, 
+    codificación UTF-8 con BOM para compatibilidad con Excel
+
+
+================================================================================
+                            FIN DEL MANUAL
+================================================================================

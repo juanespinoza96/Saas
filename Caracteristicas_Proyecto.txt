@@ -1,0 +1,226 @@
+================================================================================
+         SISTEMA SaaS POS MULTIPROPÓSITO — CARACTERÍSTICAS PRINCIPALES
+================================================================================
+
+1. DESCRIPCIÓN GENERAL
+================================================================================
+
+Es una plataforma de Punto de Venta (POS) multi-tenant que funciona como 
+servicio (SaaS). Puede servir a cualquier tipo de comercio — calzado, alimentos, 
+ropa, bares escolares, etc. — desde una sola instancia del sistema. Cada comercio 
+opera de forma completamente aislada de los demás, con sus propios datos, 
+usuarios, productos y configuraciones.
+
+La arquitectura se divide en:
+  • Backend: ASP.NET Core Web API (C#) con PostgreSQL
+  • Frontend POS: React SPA para los comercios (cajeros, gerentes, bodegueros)
+  • Frontend SuperAdmin: React SPA para el dueño del SaaS (gestión de cuentas 
+    y facturación)
+
+
+2. CONTROLES Y VALIDACIONES PRINCIPALES
+================================================================================
+
+2.1 Subscription Middleware (Control de Plan)
+------------------------------------------------------------------------------
+
+Cada comercio tiene un plan contratado (Básico $350, Intermedio $750, 
+Empresarial $1200) que limita qué puede hacer. El middleware intercepta cada 
+request y verifica:
+
+  • Límite de usuarios: Básico = 2, Intermedio = 3 por sucursal, 
+    Empresarial = ilimitado
+  • Límite de sucursales: Básico = 1, Intermedio/Empresarial = ilimitadas
+  • Límite de atributos dinámicos por categoría: Básico = 2, Intermedio = 5, 
+    Empresarial = ilimitado
+  • Acceso a roles exclusivos: Dueño, Supervisor y Bodeguero solo existen 
+    en Plan Empresarial
+  • Reportes: Básico bloqueado (403), Intermedio = 3 predefinidos, 
+    Empresarial = personalizables
+  • Facturación electrónica SRI: bloqueada para Plan Básico
+
+Política clave: FAIL-SAFE. Si el middleware no puede determinar con certeza si 
+se excede un límite (ej: error de BD), responde 403 preventivamente. Además hay 
+una validación secundaria en la capa de repositorio antes del INSERT para 
+protegerse de condiciones de carrera.
+
+
+2.2 Multi-Tenant Isolation (Aislamiento de datos)
+------------------------------------------------------------------------------
+
+Tres capas de protección para que ningún comercio vea datos de otro:
+
+  Capa 1: Extracción del ComercioId desde el JWT en cada request
+  Capa 2: Filtros globales de EF Core (HasQueryFilter) en todas las entidades
+  Capa 3: WHERE explícito con ComercioId en queries críticas (ventas, stock)
+
+Los endpoints SuperAdmin usan un AdminTenantContext que desactiva estos filtros 
+para acceso cross-tenant controlado.
+
+
+2.3 RBAC (Control de acceso por roles)
+------------------------------------------------------------------------------
+
+6 roles con permisos estrictos implementados como Authorization Policies de 
+ASP.NET Core:
+
+  SuperAdmin  → Gestionar comercios, planes, ver auditoría global
+  Dueño       → Todo dentro de su comercio (solo Plan Empresarial)
+  Gerente     → Productos, usuarios, sucursales, reportes, configuración
+  Supervisor  → Solo ver reportes y monitorear ventas en tiempo real
+  Bodeguero   → Solo gestionar stock e inventario
+  Cajero      → Solo registrar ventas y gestionar clientes
+
+La separación es también a nivel de ruta: /api/tenants/ solo acepta roles POS, 
+/api/admin/ solo SuperAdmin.
+
+
+2.4 Control de Stock con política configurable
+------------------------------------------------------------------------------
+
+El Stock_Service maneja tres comportamientos según el tipo de producto:
+
+  • Venta Directa: decremento directo de CantidadFisica
+  • Ensamblado: descuento por BOM (Bill of Materials), reduciendo cada insumo 
+    según su receta
+  • Insumo: nunca se vende directamente, solo se consume vía Ensamblados
+
+La configuración PermiteVentaEnNegativo determina si se bloquea o permite una 
+venta cuando el stock resultante sería menor a cero.
+
+
+2.5 Seguridad contra ataques
+------------------------------------------------------------------------------
+
+  • Rate Limiting: 100 req/min global, 5/min en login, 3/hora en recovery
+  • IP Blocking: 500 requests en 5 min → bloqueo de 30 minutos
+  • Account Lockout: 10 intentos fallidos en 30 min → bloqueo de cuenta 30 min 
+    (transparente, sin revelar el bloqueo al atacante)
+  • Input Validation: rechazo de patrones SQL injection y XSS
+  • Security Headers: HSTS, X-Frame-Options DENY, nosniff, etc.
+  • Body size limit: 1MB general, 5MB para firma electrónica
+  • JWT con expiración máxima de 60 minutos
+  • Inactividad de 30 minutos cierra sesión automáticamente
+
+
+3. PROCESOS EN SEGUNDO PLANO (BackgroundServices)
+================================================================================
+
+3.1 Billing Service — Procesamiento diario de cortes
+------------------------------------------------------------------------------
+
+Ejecuta a las 00:00 cada día. Revisa todas las suscripciones activas y aplica:
+
+  • 7 días antes del corte → Crea notificación "Por vencer" + encola correo 
+    al Gerente
+  • Día del corte sin pago registrado → Crea notificación de mora + encola correo
+  • 3 días después del corte sin pago → Suspensión automática del comercio 
+    (invalida todas las sesiones activas)
+
+Al contratar un plan fuera del día de corte (día 3), calcula una cuota 
+proporcional:
+
+  cuota = (precioPlan / díasTotalesMes) × díasRestantesHastaDía3
+
+
+3.2 Email Service — Cola de correos asíncrona
+------------------------------------------------------------------------------
+
+Procesa periódicamente la tabla ColaCorreos:
+
+  1. Toma registros con Estado = 'Pendiente'
+  2. Intenta el envío SMTP
+  3. Si falla, incrementa Intentos
+  4. Si Intentos >= 3 → marca como 'Fallido' y registra el error en UltimoError
+  5. Si el envío tiene éxito → marca como 'Enviado' con timestamp
+
+Esto desacopla el envío de correos del flujo principal de la aplicación, 
+evitando bloqueos por timeouts de SMTP.
+
+
+3.3 JTI Blocklist cleanup (implícito)
+------------------------------------------------------------------------------
+
+El caché en memoria que almacena los JTIs revocados tiene expiración automática 
+alineada con la expiración del JWT original. No es un worker explícito sino una 
+política de IMemoryCache, pero funciona como limpieza en background.
+
+
+4. DATOS RELEVANTES ADICIONALES
+================================================================================
+
+4.1 Modo Bar Escolar
+------------------------------------------------------------------------------
+
+Una configuración por comercio (EsBarEscolar = TRUE) que transforma 
+completamente la experiencia del POS: en vez del flujo normal de venta, muestra 
+una grilla de productos con registro en un solo clic — cantidad 1, precio lista, 
+ticket interno, sin selección de cliente ni comprobante. Diseñado para atender 
+estudiantes rápidamente.
+
+
+4.2 Facturación Electrónica SRI (Ecuador)
+------------------------------------------------------------------------------
+
+Integración real con el Servicio de Rentas Internas:
+
+  • Genera XML conforme al esquema oficial (Factura v1.1.0)
+  • Firma digitalmente con la clave del comercio (AES-256 para descifrar la 
+    clave almacenada)
+  • Envía al ambiente de producción/prueba del SRI
+  • El estado es terminal: una vez 'Autorizada', no se puede regresar 
+    (idempotencia)
+
+
+4.3 Property-Based Testing
+------------------------------------------------------------------------------
+
+El proyecto usa FsCheck (≥ 100 iteraciones por propiedad) para validar 
+invariantes formales del sistema. Hay 22 propiedades definidas que cubren desde 
+la aritmética de ventas hasta el aislamiento multi-tenant. Algunos ejemplos:
+
+  • "El total de una venta es siempre la suma de líneas × precio"
+  • "Un comercio nunca ve datos de otro comercio"
+  • "El stock de un ensamblado se descuenta por BOM, nunca directamente"
+  • "El rate limiting bloquea tras exceder el umbral"
+  • "La cuota proporcional del billing es aritméticamente correcta"
+
+
+4.4 Auditoría total
+------------------------------------------------------------------------------
+
+Toda operación crítica (crear/modificar/eliminar en Usuarios, Productos, Ventas, 
+Sucursales, Clientes, Comercios) queda registrada en LogsAuditoria con valores 
+anteriores y nuevos en JSONB. Solo el SuperAdmin puede acceder a estos registros. 
+Esto cubre tanto compliance como detección de irregularidades.
+
+
+4.5 Métodos de Pago y Pagos Diferidos
+------------------------------------------------------------------------------
+
+El sistema registra 4 métodos de pago (Efectivo, TarjetaCredito, TarjetaDebito, 
+Transferencia) y soporta pagos diferidos en cuotas (3, 6, 9, 12, 18 meses) 
+exclusivamente para tarjeta de crédito. El cálculo de cuota es:
+
+  ValorCuota = Total / CuotasMeses (redondeado a 2 decimales)
+
+Los pagos diferidos son solo informativos para el comercio — el sistema no 
+gestiona cobros recurrentes ni procesa pagos automáticos.
+
+
+4.6 Temas visuales y accesibilidad
+------------------------------------------------------------------------------
+
+Ambos frontends (POS y SuperAdmin) implementan:
+
+  • Modo Light/Dark con persistencia en localStorage
+  • Colores semánticos consistentes (verde = confirmar, amarillo = editar, 
+    rojo = eliminar) en tonos pastel (saturación < 70% HSL)
+  • Modales para formularios sin cambio de página
+  • Mensajes de validación inline junto a cada campo
+  • Confirmación obligatoria antes de acciones irreversibles
+  • Botones deshabilitados durante requests en progreso para prevenir duplicados
+
+================================================================================
+                            FIN DEL DOCUMENTO
+================================================================================

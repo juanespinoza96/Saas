@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-light-bg text-gray-900 transition-colors duration-200;
+  }
+
+  .dark body,
+  body.dark {
+    @apply bg-dark-bg text-dark-text;
+  }
+}
+
+@layer components {
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium
+           transition-colors duration-150 focus:outline-none focus:ring-2
+           focus:ring-action-confirm focus:ring-offset-2;
+  }
+
+  .sidebar-link:hover {
+    @apply bg-gray-100 dark:bg-dark-surface;
+  }
+
+  .sidebar-link.active {
+    @apply bg-action-confirm/10 text-action-confirm dark:bg-action-confirm/20;
+  }
+}

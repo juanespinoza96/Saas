@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Tamaño de fuente base: mínimo 14px para contenido principal (Req 5.6) */
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-light-bg text-gray-900 transition-colors duration-200;
+    /* Fuente mínima de contenido: 14px (Req 5.6) */
+    font-size: max(14px, 0.875rem);
+    line-height: 1.5;
+  }
+
+  .dark body,
+  body.dark {
+    @apply bg-dark-bg text-dark-text;
+  }
+
+  /* Área mínima de toque 44x44px para elementos interactivos (WCAG 2.1 - Req 5.3) */
+  button,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  a,
+  select,
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Inputs de texto: solo garantizar altura mínima de toque (Req 5.3) */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea {
+    min-height: 44px;
+  }
+
+  /* Fuente mínima para etiquetas secundarias: 12px (Req 5.6) */
+  small,
+  .text-xs,
+  label {
+    font-size: max(12px, 0.75rem);
+  }
+}
+
+@layer components {
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium
+           transition-colors duration-150 focus:outline-none focus:ring-2 
+           focus:ring-action-confirm focus:ring-offset-2;
+    /* Garantizar área de toque mínima en sidebar (Req 5.3) */
+    min-height: 44px;
+  }
+
+  .sidebar-link:hover {
+    @apply bg-gray-100 dark:bg-dark-surface;
+  }
+
+  .sidebar-link.active {
+    @apply bg-action-confirm/10 text-action-confirm dark:bg-action-confirm/20;
+  }
+
+  /* Contenedor de tabla con scroll horizontal para móvil (Req 5.7) */
+  .table-responsive {
+    @apply overflow-x-auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Columna sticky para identificación en tablas responsive (Req 5.7) */
+  .sticky-col {
+    @apply sticky left-0 z-10 bg-white dark:bg-dark-bg;
+  }
+
+  /* Variante sticky para celdas de encabezado */
+  thead .sticky-col {
+    @apply bg-gray-50 dark:bg-dark-surface;
+    z-index: 20;
+  }
+
+  /* Sombra sutil al lado derecho de la columna sticky para separación visual */
+  .sticky-col::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -4px;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.06), transparent);
+    pointer-events: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .sticky-col::after {
+      background: linear-gradient(to right, rgba(0, 0, 0, 0.2), transparent);
+    }
+  }
+
+  /* En pantallas >= 768px, la sombra no es necesaria */
+  @media (min-width: 768px) {
+    .sticky-col::after {
+      display: none;
+    }
+  }
+}

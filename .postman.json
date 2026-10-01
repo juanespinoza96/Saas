@@ -1,0 +1,43 @@
+{
+  "workspaceId": "16a561cf-0f96-45ae-8a95-c43548c17a46",
+  "workspaceName": "SaasPOS API",
+  "collections": {
+    "auth": {
+      "id": "b191e1ae-1446-4e15-a5f7-c3dbbfcb8601",
+      "uid": "56205850-b191e1ae-1446-4e15-a5f7-c3dbbfcb8601",
+      "name": "Auth - SaasPOS"
+    },
+    "stock": {
+      "id": "d41391be-f7c8-42af-803e-37a550007b58",
+      "uid": "56205850-d41391be-f7c8-42af-803e-37a550007b58",
+      "name": "Stock - SaasPOS"
+    },
+    "ai": {
+      "id": "bbf7633d-849a-4aab-9ec1-02e6865e906e",
+      "uid": "56205850-bbf7633d-849a-4aab-9ec1-02e6865e906e",
+      "name": "AI - SaasPOS"
+    },
+    "trials": {
+      "id": "55d1a377-fa92-45e8-8b54-f60fe1ebefa6",
+      "uid": "56205850-55d1a377-fa92-45e8-8b54-f60fe1ebefa6",
+      "name": "Trials - SaasPOS"
+    },
+    "ventas": {
+      "id": "f67b4e45-74cd-4219-844c-35b8228b8644",
+      "uid": "56205850-f67b4e45-74cd-4219-844c-35b8228b8644",
+      "name": "Ventas - SaasPOS"
+    },
+    "comprobantes": {
+      "id": "90705f9e-17ad-46b8-bb58-c1d97b197ad2",
+      "uid": "56205850-90705f9e-17ad-46b8-bb58-c1d97b197ad2",
+      "name": "Comprobantes - SaasPOS"
+    }
+  },
+  "environments": {
+    "local": {
+      "id": "324e59e8-a081-4c7b-bcec-d7097aeefc54",
+      "uid": "56205850-324e59e8-a081-4c7b-bcec-d7097aeefc54",
+      "name": "Local Development"
+    }
+  }
+}

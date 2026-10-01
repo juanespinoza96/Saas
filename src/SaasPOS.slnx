@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="SaasPOS.Api/SaasPOS.Api.csproj" />
+  <Project Path="SaasPOS.Application/SaasPOS.Application.csproj" />
+  <Project Path="SaasPOS.Domain/SaasPOS.Domain.csproj" />
+  <Project Path="SaasPOS.Infrastructure/SaasPOS.Infrastructure.csproj" />
+  <Project Path="SaasPOS.Tests/SaasPOS.Tests.csproj" />
+</Solution>

@@ -1,0 +1,32 @@
+/* Estilos de impresión para ticket POS */
+@media print {
+  /* Ocultar por defecto todo el árbol de la app.
+     Usamos visibility (no display: none) para que los ancestros —incluido #root—
+     sigan generando caja y sus descendientes puedan volver a mostrarse. */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Volver a mostrar el ticket y todos sus descendientes.
+     Aunque #root es un ancestro de #ticket-print-root, al usar visibility
+     el ticket recupera visibilidad sin depender del estado de sus ancestros. */
+  #ticket-print-root,
+  #ticket-print-root * {
+    visibility: visible;
+  }
+
+  /* Reposicionar el ticket para que ocupe la hoja desde el origen */
+  #ticket-print-root {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+  }
+
+  /* Márgenes y tamaño para impresora térmica */
+  @page {
+    margin: 5mm;
+    size: 80mm auto;
+  }
+}
