@@ -1,20 +1,26 @@
-using System.Security.Claims;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
-using SaasPOS.Application.Interfaces;
 using SaasPOS.Api.Services;
-using SaasPOS.Infrastructure.Data;
 
 namespace SaasPOS.Api.Middleware;
 
 /// <summary>
 /// Middleware que gestiona el contexto de tenant:
 /// - Para rutas /api/admin/ reemplaza el ITenantContext con AdminTenantContext (bypass de filtros).
-/// - Para rutas /api/tenants/ verifica que el Comercio no esté suspendido; si lo está, responde 403.
+/// - Para rutas /api/tenants/ actúa como verificación de respaldo de que el Comercio no esté suspendido.
+///
+/// FUENTE ÚNICA DE VERDAD de la verificación de suspensión: RouteAuthorizationMiddleware.
+/// Ese middleware corre ANTES que este en el pipeline, consulta la tabla Comercios una sola vez
+/// (IgnoreQueryFilters) y DEJA el resultado booleano cacheado en context.Items["__ComercioSuspendido"].
+/// Además, para un comercio suspendido ya responde 403 { error, code = COMMERCE_SUSPENDED } y
+/// corta la cadena ANTES de llegar aquí. Por eso este middleware NO vuelve a consultar la base de
+/// datos: solo REUTILIZA el valor cacheado como salvaguarda defensiva, evitando la doble consulta
+/// redundante que existía antes.
 /// </summary>
 public class TenantContextMiddleware
 {
     private readonly RequestDelegate _next;
+
+    // Clave compartida con RouteAuthorizationMiddleware, que es quien puebla este valor.
+    private const string ComercioSuspendidoCacheKey = "__ComercioSuspendido";
 
     public TenantContextMiddleware(RequestDelegate next)
     {
@@ -31,28 +37,33 @@ public class TenantContextMiddleware
         }
         else if (context.Request.Path.StartsWithSegments("/api/tenants", StringComparison.OrdinalIgnoreCase))
         {
-            // Verificar si el comercio está suspendido
-            var comercioIdClaim = context.User?.FindFirstValue("comercio_id");
-            if (int.TryParse(comercioIdClaim, out var comercioId))
+            // Reutilizar el resultado de suspensión calculado por RouteAuthorizationMiddleware.
+            // NO se consulta la base de datos aquí (se eliminó la segunda consulta redundante).
+            if (context.Items.TryGetValue(ComercioSuspendidoCacheKey, out var cached) && cached is bool isSuspendido)
             {
-                var dbContext = context.RequestServices.GetRequiredService<AppDbContext>();
-                var estado = await dbContext.Comercios
-                    .Where(c => c.Id == comercioId)
-                    .Select(c => c.Estado)
-                    .FirstOrDefaultAsync();
-
-                if (estado == "Suspendido")
+                if (isSuspendido)
                 {
+                    // Salvaguarda defensiva: en el flujo normal RouteAuthorizationMiddleware ya habría
+                    // respondido 403 antes de llegar aquí. Se mantiene el mismo formato de error
+                    // ({ error, code = COMMERCE_SUSPENDED }) para que la respuesta sea coherente con
+                    // la de RouteAuthorizationMiddleware. El frontend no depende de un formato concreto
+                    // de este 403 (lo trata de forma genérica en src/SaasPOS.Web/src/lib/api.ts).
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    context.Response.ContentType = "application/json";
-                    var body = JsonSerializer.Serialize(new
+                    await context.Response.WriteAsJsonAsync(new
                     {
-                        mensaje = "El comercio se encuentra suspendido. No tiene acceso al sistema."
+                        error = "Su comercio se encuentra suspendido. Contacte al administrador de la plataforma.",
+                        code = "COMMERCE_SUSPENDED"
                     });
-                    await context.Response.WriteAsync(body);
                     return;
                 }
+                // Comercio activo (valor false): continuar normalmente.
             }
+            // Si la clave NO está presente, se continúa sin bloquear (estrategia (a)).
+            // Es seguro porque la única ruta /api/tenants/** que NO puebla la clave es
+            // /api/tenants/auth (endpoints anónimos de login/recuperación), que RouteAuthorizationMiddleware
+            // deja pasar temprano SIN verificar suspensión y que no deben bloquearse. Toda otra ruta
+            // /api/tenants/** no-/auth pasa obligatoriamente por IsComercioSuspendidoAsync, que SIEMPRE
+            // puebla la clave (incluso en false cuando no hay comercio_id válido).
         }
 
         await _next(context);

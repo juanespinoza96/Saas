@@ -185,8 +185,17 @@ var adminOrigin = config["Cors:AdminOrigin"] ?? "https://admin.saas.com";
 builder.Services.AddCors(opt => opt.AddPolicy("SaaS", policy =>
 {
     policy.WithOrigins(posOrigin, adminOrigin)
-          .AllowAnyHeader()
-          .AllowAnyMethod()
+          // Restringir las cabeceras a las que los clientes POS y Admin realmente envían
+          // (ver src/SaasPOS.Web/src/lib/api.ts y src/SaasPOS.Admin/src/lib/api.ts):
+          //   - Content-Type: ambos clientes serializan el body como application/json.
+          //   - Authorization: ambos clientes inyectan el JWT como "Bearer <token>".
+          //   - X-Timezone: ambos clientes envían la zona horaria del navegador (detectTimezone).
+          // No se usa AllowAnyHeader() para evitar permitir cabeceras arbitrarias en el preflight.
+          .WithHeaders("Content-Type", "Authorization", "X-Timezone")
+          // Restringir los métodos a los verbos REST que exponen los controladores,
+          // más OPTIONS (requerido por el preflight CORS del navegador).
+          // Se reemplaza AllowAnyMethod() para no habilitar verbos no utilizados.
+          .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
           .AllowCredentials();
 }));
 
