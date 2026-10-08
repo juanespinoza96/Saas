@@ -89,3 +89,6 @@ TESTING.md
 # ─── OS ───────────────────────────────────────────────────────────
 Thumbs.db
 .DS_Store
+
+# ─── Diagramas generados localmente (no versionar) ────────────────
+docs/diagramas/
