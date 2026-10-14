@@ -127,8 +127,8 @@ public class MigrationValidationTests : IAsyncLifetime
 
         await connection.CloseAsync();
 
-        // Debe contener al menos la migración inicial
-        Assert.Contains(migrations, m => m.Contains("InitialCreate"));
+        // Debe contener la baseline única del saneamiento (InitialBaseline)
+        Assert.Contains(migrations, m => m.Contains("InitialBaseline"));
         // Debe contener todas las migraciones del proyecto
         Assert.True(migrations.Count >= 1,
             "Debe haber al menos una migración registrada en __EFMigrationsHistory");
@@ -144,14 +144,15 @@ public class MigrationValidationTests : IAsyncLifetime
         // Assert: verificar que todas las tablas esperadas del dominio existen
         var tables = await GetUserTablesAsync(context);
 
-        // Tablas esperadas basadas en los DbSet del AppDbContext
-        // Nota: ConfiguracionesComprobante se crea mediante raw SQL migration que puede
-        // no tener Designer file; se verifica por separado si existe.
+        // Tablas esperadas basadas en los DbSet del AppDbContext.
+        // Tras el saneamiento, ConfiguracionesComprobante es descubrible por MigrateAsync()
+        // (su CREATE vive en el Up() de InitialBaseline), por lo que se exige como el resto.
         var tablasEsperadas = new[]
         {
             "Planes",
             "Comercios",
             "ConfiguracionesComercio",
+            "ConfiguracionesComprobante",
             "Suscripciones",
             "PagosComercio",
             "Sucursales",
@@ -176,14 +177,6 @@ public class MigrationValidationTests : IAsyncLifetime
         {
             Assert.Contains(tabla, tables,
                 StringComparer.OrdinalIgnoreCase);
-        }
-
-        // ConfiguracionesComprobante se verifica si la migración EF la descubre;
-        // si no la descubre (por falta de Designer file), se asume que se aplica vía raw SQL
-        // y no se falla el test por ello.
-        if (tables.Any(t => t.Equals("ConfiguracionesComprobante", StringComparison.OrdinalIgnoreCase)))
-        {
-            Assert.Contains("ConfiguracionesComprobante", tables, StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -214,26 +207,18 @@ public class MigrationValidationTests : IAsyncLifetime
             .OrderBy(t => t)
             .ToList();
 
-        // Tablas que pueden no tener Designer file y por tanto no son descubiertas por EF Migrate
-        // pero sí existen en EnsureCreated (basado en el modelo actual).
-        // Estas tablas se aplican vía raw SQL migrations en producción.
-        var tablasRawSqlMigration = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "configuracionescomprobante"
-        };
-
-        // Verificar que las tablas de EnsureCreated están presentes en Migrate
-        // (excluyendo las que se aplican vía raw SQL migration sin Designer file)
+        // Tras el saneamiento de la cadena (baseline única InitialBaseline), la tabla
+        // ConfiguracionesComprobante YA es descubrible por MigrateAsync() (su CREATE vive
+        // en el Up() de InitialBaseline). Por eso se compara como cualquier otra tabla,
+        // sin exclusiones: el esquema de Migrate debe ser equivalente al de EnsureCreated.
         var faltantesEnMigrate = ensureNormalized
             .Except(migrateNormalized)
-            .Where(t => !tablasRawSqlMigration.Contains(t))
             .ToList();
 
         Assert.True(faltantesEnMigrate.Count == 0,
             $"Tablas en EnsureCreated que faltan en Migrate: {string.Join(", ", faltantesEnMigrate)}");
 
         // Las tablas del Migrate que también están en EnsureCreated deben coincidir
-        // (excluyendo las raw SQL migration tables que pueden estar ausentes en Migrate)
         var sobrantesEnMigrate = migrateNormalized.Except(ensureNormalized).ToList();
         Assert.True(sobrantesEnMigrate.Count == 0,
             $"Tablas sobrantes en Migrate: {string.Join(", ", sobrantesEnMigrate)}");
