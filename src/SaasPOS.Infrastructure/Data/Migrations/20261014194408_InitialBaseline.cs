@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace SaasPOS.Infrastructure.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitialBaseline : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -21,7 +21,8 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     Nombre = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     Precio = table.Column<decimal>(type: "numeric(10,2)", nullable: false),
                     LimiteUsuarios = table.Column<int>(type: "integer", nullable: false),
-                    LimiteAtributos = table.Column<int>(type: "integer", nullable: false)
+                    LimiteAtributos = table.Column<int>(type: "integer", nullable: false),
+                    LimiteSucursales = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -40,7 +41,9 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     UsaFacturacionSRI = table.Column<bool>(type: "boolean", nullable: false),
                     RutaFirmaElectronica = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     ClaveFirmaEncriptada = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
-                    FechaRegistro = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    Estado = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false, defaultValue: "Activo"),
+                    FechaRegistro = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ZonaHorariaDefecto = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -148,6 +151,28 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ConfiguracionesComprobante",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ComercioId = table.Column<int>(type: "integer", nullable: false),
+                    TipoComprobante = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    Habilitado = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    FechaCreacion = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "NOW()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConfiguracionesComprobante", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ConfiguracionesComprobante_Comercios_ComercioId",
+                        column: x => x.ComercioId,
+                        principalTable: "Comercios",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Sucursales",
                 columns: table => new
                 {
@@ -183,7 +208,8 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     MontoCuota = table.Column<decimal>(type: "numeric(10,2)", nullable: false),
                     EsProporcional = table.Column<bool>(type: "boolean", nullable: false),
                     Estado = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    FechaUltimoPago = table.Column<DateOnly>(type: "date", nullable: true)
+                    FechaUltimoPago = table.Column<DateOnly>(type: "date", nullable: true),
+                    DiasExtendidos = table.Column<int>(type: "integer", nullable: false, defaultValue: 0)
                 },
                 constraints: table =>
                 {
@@ -258,6 +284,29 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ConfiguracionesSucursal",
+                columns: table => new
+                {
+                    SucursalId = table.Column<int>(type: "integer", nullable: false),
+                    EsBarEscolar = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
+                    MostrarBotonCliente = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
+                    PermiteVentaEnNegativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
+                    ImpresionAutomaticaTicket = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    PermitePrecioNegociado = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
+                    MostrarVentasAlCajero = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConfiguracionesSucursal", x => x.SucursalId);
+                    table.ForeignKey(
+                        name: "FK_ConfiguracionesSucursal_Sucursales_SucursalId",
+                        column: x => x.SucursalId,
+                        principalTable: "Sucursales",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Usuarios",
                 columns: table => new
                 {
@@ -269,7 +318,9 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     Email = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
                     PasswordHash = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     Rol = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    Activo = table.Column<bool>(type: "boolean", nullable: false)
+                    Activo = table.Column<bool>(type: "boolean", nullable: false),
+                    ZonaHoraria = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    DebeCambiarPassword = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false)
                 },
                 constraints: table =>
                 {
@@ -301,7 +352,8 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     Mensaje = table.Column<string>(type: "text", nullable: false),
                     Leida = table.Column<bool>(type: "boolean", nullable: false),
                     TipoNotificacion = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    FechaEmision = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    FechaEmision = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    SuscripcionId = table.Column<int>(type: "integer", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -322,6 +374,12 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         name: "FK_Notificaciones_Sucursales_SucursalId",
                         column: x => x.SucursalId,
                         principalTable: "Sucursales",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_Notificaciones_Suscripciones_SuscripcionId",
+                        column: x => x.SuscripcionId,
+                        principalTable: "Suscripciones",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.SetNull);
                 });
@@ -382,7 +440,8 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     ProductoId = table.Column<int>(type: "integer", nullable: false),
                     SucursalId = table.Column<int>(type: "integer", nullable: false),
-                    CantidadFisica = table.Column<decimal>(type: "numeric(10,4)", nullable: false)
+                    CantidadFisica = table.Column<decimal>(type: "numeric(10,4)", nullable: false),
+                    StockMinimo = table.Column<decimal>(type: "numeric(10,4)", nullable: false, defaultValue: 0m)
                 },
                 constraints: table =>
                 {
@@ -471,6 +530,45 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "SolicitudesRecuperacion",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    UsuarioId = table.Column<int>(type: "integer", nullable: false),
+                    ComercioId = table.Column<int>(type: "integer", nullable: false),
+                    Estado = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false, defaultValue: "Pendiente"),
+                    AprobadoPor = table.Column<int>(type: "integer", nullable: true),
+                    FechaSolicitud = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    FechaResolucion = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    PasswordTemporalCifrada = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: true),
+                    FechaExpiracion = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    MotivoRechazo = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SolicitudesRecuperacion", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SolicitudesRecuperacion_Comercios_ComercioId",
+                        column: x => x.ComercioId,
+                        principalTable: "Comercios",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_SolicitudesRecuperacion_Usuarios_AprobadoPor",
+                        column: x => x.AprobadoPor,
+                        principalTable: "Usuarios",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_SolicitudesRecuperacion_Usuarios_UsuarioId",
+                        column: x => x.UsuarioId,
+                        principalTable: "Usuarios",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Ventas",
                 columns: table => new
                 {
@@ -483,6 +581,10 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     Total = table.Column<decimal>(type: "numeric(12,2)", nullable: false),
                     TipoComprobante = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     EstadoSRI = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    MetodoPago = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "Efectivo"),
+                    CuotasMeses = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
+                    ValorCuota = table.Column<decimal>(type: "numeric(12,2)", nullable: true),
+                    ReferenciaTransaccion = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     FechaVenta = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -581,6 +683,12 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "ix_configuraciones_comprobante_comercio_tipo",
+                table: "ConfiguracionesComprobante",
+                columns: new[] { "ComercioId", "TipoComprobante" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_DetalleVentas_ProductoId",
                 table: "DetalleVentas",
                 column: "ProductoId");
@@ -599,6 +707,12 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 name: "IX_LogsAuditoria_UsuarioId",
                 table: "LogsAuditoria",
                 column: "UsuarioId");
+
+            migrationBuilder.CreateIndex(
+                name: "idx_notificaciones_suscripcion_tipo",
+                table: "Notificaciones",
+                columns: new[] { "SuscripcionId", "TipoNotificacion" },
+                filter: "\"SuscripcionId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Notificaciones_ComercioId",
@@ -662,6 +776,27 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 column: "ProductoFinalId");
 
             migrationBuilder.CreateIndex(
+                name: "idx_solicitudes_recuperacion_comercio",
+                table: "SolicitudesRecuperacion",
+                column: "ComercioId");
+
+            migrationBuilder.CreateIndex(
+                name: "idx_solicitudes_recuperacion_estado",
+                table: "SolicitudesRecuperacion",
+                column: "Estado",
+                filter: "\"Estado\" = 'Pendiente'");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SolicitudesRecuperacion_AprobadoPor",
+                table: "SolicitudesRecuperacion",
+                column: "AprobadoPor");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SolicitudesRecuperacion_UsuarioId",
+                table: "SolicitudesRecuperacion",
+                column: "UsuarioId");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_stock_sucursal_producto",
                 table: "StockSucursal",
                 columns: new[] { "ProductoId", "SucursalId" },
@@ -686,6 +821,12 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 name: "idx_suscripciones_estado",
                 table: "Suscripciones",
                 column: "Estado");
+
+            migrationBuilder.CreateIndex(
+                name: "idx_suscripciones_trial",
+                table: "Suscripciones",
+                columns: new[] { "Estado", "FechaProximoCorte" },
+                filter: "\"Estado\" IN ('Trial', 'Trial_Expirado')");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Suscripciones_ComercioId",
@@ -732,6 +873,44 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                 name: "IX_Ventas_UsuarioId",
                 table: "Ventas",
                 column: "UsuarioId");
+
+            // ── Semillas y migración de datos re-copiadas del parche manual ──────────────
+            // Estos efectos de DATOS NO los genera EF a partir del modelo, por lo que se
+            // re-copian aquí (equivalentes a migrations-comprobantes.sql). Se ejecutan al
+            // FINAL del Up(), cuando las tablas "Comercios", "ConfiguracionesComprobante" y
+            // "Ventas" ya existen. En una base de dev VACÍA no insertan filas (no hay
+            // comercios ni ventas); su valor es quedar dentro de la migración descubrible
+            // para entornos que ya tengan datos.
+
+            // Semilla: Ticket Digital (habilitado) para todos los comercios existentes.
+            migrationBuilder.Sql(@"
+                INSERT INTO ""ConfiguracionesComprobante"" (""ComercioId"", ""TipoComprobante"", ""Habilitado"", ""FechaCreacion"")
+                SELECT c.""Id"", 'Ticket Digital', TRUE, NOW()
+                FROM ""Comercios"" c;
+            ");
+
+            // Semilla: Ticket Impreso (deshabilitado) para todos los comercios existentes.
+            migrationBuilder.Sql(@"
+                INSERT INTO ""ConfiguracionesComprobante"" (""ComercioId"", ""TipoComprobante"", ""Habilitado"", ""FechaCreacion"")
+                SELECT c.""Id"", 'Ticket Impreso', FALSE, NOW()
+                FROM ""Comercios"" c;
+            ");
+
+            // Semilla: Factura Electrónica (habilitada solo si UsaFacturacionSRI = TRUE).
+            migrationBuilder.Sql(@"
+                INSERT INTO ""ConfiguracionesComprobante"" (""ComercioId"", ""TipoComprobante"", ""Habilitado"", ""FechaCreacion"")
+                SELECT c.""Id"", 'Factura Electrónica',
+                    CASE WHEN c.""UsaFacturacionSRI"" = TRUE THEN TRUE ELSE FALSE END,
+                    NOW()
+                FROM ""Comercios"" c;
+            ");
+
+            // Migración de datos legacy: renombrar el tipo de comprobante antiguo en Ventas.
+            migrationBuilder.Sql(@"
+                UPDATE ""Ventas""
+                SET ""TipoComprobante"" = 'Ticket Digital'
+                WHERE ""TipoComprobante"" = 'Ticket Interno';
+            ");
         }
 
         /// <inheritdoc />
@@ -745,6 +924,12 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "ConfiguracionesComercio");
+
+            migrationBuilder.DropTable(
+                name: "ConfiguracionesComprobante");
+
+            migrationBuilder.DropTable(
+                name: "ConfiguracionesSucursal");
 
             migrationBuilder.DropTable(
                 name: "DetalleVentas");
@@ -763,6 +948,9 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "RecetasProducto");
+
+            migrationBuilder.DropTable(
+                name: "SolicitudesRecuperacion");
 
             migrationBuilder.DropTable(
                 name: "StockSucursal");

@@ -12,15 +12,15 @@ using SaasPOS.Infrastructure.Data;
 namespace SaasPOS.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260620051231_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20261014194408_InitialBaseline")]
+    partial class InitialBaseline
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "9.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -188,6 +188,13 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Activo");
+
                     b.Property<DateTime>("FechaRegistro")
                         .HasColumnType("timestamp with time zone");
 
@@ -210,6 +217,10 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
                     b.Property<bool>("UsaFacturacionSRI")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("ZonaHorariaDefecto")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
 
@@ -242,6 +253,81 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.HasKey("ComercioId");
 
                     b.ToTable("ConfiguracionesComercio");
+                });
+
+            modelBuilder.Entity("SaasPOS.Domain.Entities.ConfiguracionComprobante", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ComercioId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<bool>("Habilitado")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("TipoComprobante")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ComercioId", "TipoComprobante")
+                        .IsUnique()
+                        .HasDatabaseName("ix_configuraciones_comprobante_comercio_tipo");
+
+                    b.ToTable("ConfiguracionesComprobante", (string)null);
+                });
+
+            modelBuilder.Entity("SaasPOS.Domain.Entities.ConfiguracionSucursal", b =>
+                {
+                    b.Property<int>("SucursalId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("EsBarEscolar")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("ImpresionAutomaticaTicket")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("MostrarBotonCliente")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("MostrarVentasAlCajero")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("PermitePrecioNegociado")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("PermiteVentaEnNegativo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.HasKey("SucursalId");
+
+                    b.ToTable("ConfiguracionesSucursal", (string)null);
                 });
 
             modelBuilder.Entity("SaasPOS.Domain.Entities.DetalleVenta", b =>
@@ -347,6 +433,9 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Property<int?>("SucursalId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("SuscripcionId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("TipoNotificacion")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -364,6 +453,10 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.HasIndex("ProductoId");
 
                     b.HasIndex("SucursalId");
+
+                    b.HasIndex("SuscripcionId", "TipoNotificacion")
+                        .HasDatabaseName("idx_notificaciones_suscripcion_tipo")
+                        .HasFilter("\"SuscripcionId\" IS NOT NULL");
 
                     b.ToTable("Notificaciones");
                 });
@@ -420,6 +513,9 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<int>("LimiteAtributos")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LimiteSucursales")
                         .HasColumnType("integer");
 
                     b.Property<int>("LimiteUsuarios")
@@ -546,6 +642,63 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.ToTable("RecetasProducto");
                 });
 
+            modelBuilder.Entity("SaasPOS.Domain.Entities.SolicitudRecuperacion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AprobadoPor")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ComercioId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Pendiente");
+
+                    b.Property<DateTime?>("FechaExpiracion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("FechaResolucion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaSolicitud")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MotivoRechazo")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("PasswordTemporalCifrada")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AprobadoPor");
+
+                    b.HasIndex("ComercioId")
+                        .HasDatabaseName("idx_solicitudes_recuperacion_comercio");
+
+                    b.HasIndex("Estado")
+                        .HasDatabaseName("idx_solicitudes_recuperacion_estado")
+                        .HasFilter("\"Estado\" = 'Pendiente'");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("SolicitudesRecuperacion");
+                });
+
             modelBuilder.Entity("SaasPOS.Domain.Entities.StockSucursal", b =>
                 {
                     b.Property<int>("Id")
@@ -559,6 +712,11 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
                     b.Property<int>("ProductoId")
                         .HasColumnType("integer");
+
+                    b.Property<decimal>("StockMinimo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(10,4)")
+                        .HasDefaultValue(0m);
 
                     b.Property<int>("SucursalId")
                         .HasColumnType("integer");
@@ -619,6 +777,11 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Property<int>("ComercioId")
                         .HasColumnType("integer");
 
+                    b.Property<int>("DiasExtendidos")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<bool>("EsProporcional")
                         .HasColumnType("boolean");
 
@@ -654,6 +817,10 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
                     b.HasIndex("PlanId");
 
+                    b.HasIndex("Estado", "FechaProximoCorte")
+                        .HasDatabaseName("idx_suscripciones_trial")
+                        .HasFilter("\"Estado\" IN ('Trial', 'Trial_Expirado')");
+
                     b.ToTable("Suscripciones");
                 });
 
@@ -670,6 +837,11 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
                     b.Property<int>("ComercioId")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("DebeCambiarPassword")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -693,6 +865,10 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
                     b.Property<int?>("SucursalId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ZonaHoraria")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.HasKey("Id");
 
@@ -722,12 +898,28 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Property<int>("ComercioId")
                         .HasColumnType("integer");
 
+                    b.Property<int>("CuotasMeses")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("EstadoSRI")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
                     b.Property<DateTime>("FechaVenta")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MetodoPago")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Efectivo");
+
+                    b.Property<string>("ReferenciaTransaccion")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<int>("SucursalId")
                         .HasColumnType("integer");
@@ -742,6 +934,9 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
                     b.Property<int>("UsuarioId")
                         .HasColumnType("integer");
+
+                    b.Property<decimal?>("ValorCuota")
+                        .HasColumnType("numeric(12,2)");
 
                     b.HasKey("Id");
 
@@ -822,6 +1017,28 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Navigation("Comercio");
                 });
 
+            modelBuilder.Entity("SaasPOS.Domain.Entities.ConfiguracionComprobante", b =>
+                {
+                    b.HasOne("SaasPOS.Domain.Entities.Comercio", "Comercio")
+                        .WithMany("ConfiguracionesComprobante")
+                        .HasForeignKey("ComercioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Comercio");
+                });
+
+            modelBuilder.Entity("SaasPOS.Domain.Entities.ConfiguracionSucursal", b =>
+                {
+                    b.HasOne("SaasPOS.Domain.Entities.Sucursal", "Sucursal")
+                        .WithOne("Configuracion")
+                        .HasForeignKey("SaasPOS.Domain.Entities.ConfiguracionSucursal", "SucursalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Sucursal");
+                });
+
             modelBuilder.Entity("SaasPOS.Domain.Entities.DetalleVenta", b =>
                 {
                     b.HasOne("SaasPOS.Domain.Entities.Producto", "Producto")
@@ -877,11 +1094,18 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         .HasForeignKey("SucursalId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("SaasPOS.Domain.Entities.Suscripcion", "Suscripcion")
+                        .WithMany()
+                        .HasForeignKey("SuscripcionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Comercio");
 
                     b.Navigation("Producto");
 
                     b.Navigation("Sucursal");
+
+                    b.Navigation("Suscripcion");
                 });
 
             modelBuilder.Entity("SaasPOS.Domain.Entities.PagoComercio", b =>
@@ -957,6 +1181,32 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Navigation("Ingrediente");
 
                     b.Navigation("ProductoFinal");
+                });
+
+            modelBuilder.Entity("SaasPOS.Domain.Entities.SolicitudRecuperacion", b =>
+                {
+                    b.HasOne("SaasPOS.Domain.Entities.Usuario", "Aprobador")
+                        .WithMany()
+                        .HasForeignKey("AprobadoPor")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SaasPOS.Domain.Entities.Comercio", "Comercio")
+                        .WithMany()
+                        .HasForeignKey("ComercioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SaasPOS.Domain.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Aprobador");
+
+                    b.Navigation("Comercio");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("SaasPOS.Domain.Entities.StockSucursal", b =>
@@ -1080,6 +1330,8 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
                     b.Navigation("Configuracion");
 
+                    b.Navigation("ConfiguracionesComprobante");
+
                     b.Navigation("LogsAuditoria");
 
                     b.Navigation("Notificaciones");
@@ -1121,6 +1373,8 @@ namespace SaasPOS.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("SaasPOS.Domain.Entities.Sucursal", b =>
                 {
+                    b.Navigation("Configuracion");
+
                     b.Navigation("Notificaciones");
 
                     b.Navigation("Stocks");
