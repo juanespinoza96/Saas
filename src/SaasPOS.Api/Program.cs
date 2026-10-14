@@ -586,9 +586,10 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// ── Auto-create database schema (Development only) ────────────────────────────
-// EF Core creates tables with the exact PascalCase names it expects.
-// Remove or replace with migrations for production.
+// ── Creación automática del esquema (solo Development) ────────────────────────
+// Las migraciones EF Core son la fuente de verdad del esquema (ver README-migrations.md).
+// En Development se usa EnsureCreated() por conveniencia; en producción el esquema se
+// aplica con el script idempotente revisado por el DBA. NO usar EnsureCreated() en producción.
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();

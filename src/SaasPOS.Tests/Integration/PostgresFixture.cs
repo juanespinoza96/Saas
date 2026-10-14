@@ -29,7 +29,10 @@ public class PostgresFixture : IAsyncLifetime
     {
         await _container.StartAsync();
 
-        // Aplicar schema usando EnsureCreated (no hay migraciones en este proyecto)
+        // Se usa EnsureCreated() solo para montar el esquema en estos tests de integración.
+        // La fuente de verdad del esquema son las migraciones de EF Core; aquí no se aplican
+        // porque EnsureCreated() crea el esquema directamente a partir del modelo, lo cual es
+        // suficiente y más rápido para el contenedor efímero de pruebas.
         await using var context = CreateDbContext();
         await context.Database.EnsureCreatedAsync();
     }
