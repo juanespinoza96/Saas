@@ -278,6 +278,41 @@ INSERT INTO "ConfiguracionesSucursal" ("SucursalId", "EsBarEscolar", "MostrarBot
 (7, false, false, false, true);
 
 -- ============================================================
+-- 14b. CONFIGURACIONES COMPROBANTE (tipos de comprobante por comercio)
+-- Tipos válidos: 'Ticket Digital' | 'Ticket Impreso' | 'Factura Electrónica'
+-- 'Factura Electrónica' se habilita solo para comercios con facturación SRI activa (Comercio 3).
+-- ============================================================
+INSERT INTO "ConfiguracionesComprobante" ("Id", "ComercioId", "TipoComprobante", "Habilitado", "FechaCreacion") VALUES
+-- Comercio 1 (Demo) - SRI inactivo
+(1, 1, 'Ticket Digital', true, '2026-06-24T20:50:17.321Z'),
+(2, 1, 'Ticket Impreso', true, '2026-06-24T20:50:17.321Z'),
+(3, 1, 'Factura Electrónica', false, '2026-06-24T20:50:17.321Z'),
+-- Comercio 2 (Moda Express) - SRI inactivo
+(4, 2, 'Ticket Digital', true, '2025-01-01T13:00:00.000Z'),
+(5, 2, 'Ticket Impreso', true, '2025-01-01T13:00:00.000Z'),
+(6, 2, 'Factura Electrónica', false, '2025-01-01T13:00:00.000Z'),
+-- Comercio 3 (Sabores del Valle) - SRI activo
+(7, 3, 'Ticket Digital', true, '2025-01-10T15:00:00.000Z'),
+(8, 3, 'Ticket Impreso', true, '2025-01-10T15:00:00.000Z'),
+(9, 3, 'Factura Electrónica', true, '2025-01-10T15:00:00.000Z'),
+-- Comercio 4 (Bar Escolar) - SRI inactivo
+(10, 4, 'Ticket Digital', true, '2024-12-01T14:00:00.000Z'),
+(11, 4, 'Ticket Impreso', true, '2024-12-01T14:00:00.000Z'),
+(12, 4, 'Factura Electrónica', false, '2024-12-01T14:00:00.000Z'),
+-- Comercio 5 (Negocio Moroso) - SRI inactivo
+(13, 5, 'Ticket Digital', true, '2024-11-01T14:00:00.000Z'),
+(14, 5, 'Ticket Impreso', true, '2024-11-01T14:00:00.000Z'),
+(15, 5, 'Factura Electrónica', false, '2024-11-01T14:00:00.000Z');
+
+SELECT setval(pg_get_serial_sequence('"ConfiguracionesComprobante"', 'Id'), (SELECT MAX("Id") FROM "ConfiguracionesComprobante"));
+
+-- ============================================================
+-- NOTA: La tabla "JtiRevocados" se deja intencionalmente vacía.
+-- Es la blocklist de tokens JWT revocados y se puebla en runtime
+-- cuando se revocan tokens; no requiere datos semilla.
+-- ============================================================
+
+-- ============================================================
 -- 15. PAGOS COMERCIO
 -- ============================================================
 INSERT INTO "PagosComercio" ("Id", "ComercioId", "SuscripcionId", "MontoPagado", "FechaPago", "MetodoPago", "Referencia", "RegistradoPor") VALUES

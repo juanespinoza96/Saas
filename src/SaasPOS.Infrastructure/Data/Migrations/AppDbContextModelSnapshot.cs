@@ -356,6 +356,37 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.ToTable("DetalleVentas");
                 });
 
+            modelBuilder.Entity("SaasPOS.Domain.Entities.JtiRevocado", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Expiracion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaRevocacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Jti")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Expiracion")
+                        .HasDatabaseName("ix_jti_revocados_expiracion");
+
+                    b.HasIndex("Jti")
+                        .IsUnique()
+                        .HasDatabaseName("ix_jti_revocados_jti");
+
+                    b.ToTable("JtiRevocados");
+                });
+
             modelBuilder.Entity("SaasPOS.Domain.Entities.LogAuditoria", b =>
                 {
                     b.Property<int>("Id")

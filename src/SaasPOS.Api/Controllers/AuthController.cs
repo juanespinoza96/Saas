@@ -19,7 +19,10 @@ public class AuthController : ControllerBase
     private readonly IAccountLockoutService _accountLockout;
     private readonly ILoginAttemptTracker _loginAttemptTracker;
     private readonly IAuditService _auditService;
-    private readonly ISecurityAuditService _securityAuditService;
+    // IServiceScopeFactory en lugar de ISecurityAuditService: la auditoría de login fallido
+    // es fire-and-forget y sobrevive al request, por lo que NO debe reutilizar servicios Scoped
+    // (ni su AppDbContext) capturados del request. Cada tarea crea su propio scope.
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AuthController> _logger;
 
     // Constantes de la LoginPolicy (Req 4.5, 4.6, 4.7)
@@ -32,7 +35,7 @@ public class AuthController : ControllerBase
         IAccountLockoutService accountLockout,
         ILoginAttemptTracker loginAttemptTracker,
         IAuditService auditService,
-        ISecurityAuditService securityAuditService,
+        IServiceScopeFactory scopeFactory,
         ILogger<AuthController> logger)
     {
         _authService = authService;
@@ -40,7 +43,7 @@ public class AuthController : ControllerBase
         _accountLockout = accountLockout;
         _loginAttemptTracker = loginAttemptTracker;
         _auditService = auditService;
-        _securityAuditService = securityAuditService;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -61,7 +64,7 @@ public class AuthController : ControllerBase
         // Return same generic message to not reveal lockout state.
         if (_accountLockout.IsLockedOut(request.Email))
         {
-            _ = LogFailedLoginAsync(request.Email, ipAddress, "Cuenta bloqueada por intentos fallidos");
+            LogFailedLoginAsync(request.Email, ipAddress, "Cuenta bloqueada por intentos fallidos");
             return Unauthorized(new { message = "Credenciales inválidas" });
         }
 
@@ -73,7 +76,7 @@ public class AuthController : ControllerBase
             // y retornar un mensaje claro sin revelar existencia a atacantes
             if (result.ErrorCode == "USER_INACTIVE")
             {
-                _ = LogFailedLoginAsync(request.Email, ipAddress, "Usuario inactivo");
+                LogFailedLoginAsync(request.Email, ipAddress, "Usuario inactivo");
                 return StatusCode(StatusCodes.Status403Forbidden, new
                 {
                     message = result.ErrorMessage,
@@ -87,7 +90,7 @@ public class AuthController : ControllerBase
             var currentAttempts = _loginAttemptTracker.RecordFailedAttempt(ipAddress, request.Email);
             var remainingAttempts = MaxLoginAttempts - currentAttempts;
 
-            _ = LogFailedLoginAsync(request.Email, ipAddress, "Credenciales inválidas");
+            LogFailedLoginAsync(request.Email, ipAddress, "Credenciales inválidas");
 
             // Req 4.7: Tercer intento fallido → HTTP 429 con retryAfterSeconds
             if (currentAttempts >= MaxLoginAttempts)
@@ -372,18 +375,29 @@ public class AuthController : ControllerBase
 
     /// <summary>
     /// Logs a failed login attempt to the audit trail (Req 3.4, 23.10).
-    /// Utiliza tanto IAuditService como ISecurityAuditService para máxima cobertura.
+    /// Fire-and-forget para no afectar la latencia de la respuesta ni introducir un canal de
+    /// temporización que distinga logins fallidos de exitosos (Req 3.2, 4.x).
+    ///
+    /// La tarea crea su PROPIO scope de DI (igual que InputValidationMiddleware y
+    /// CrossTenantGuardMiddleware) y resuelve desde él un ISecurityAuditService con su propio
+    /// AppDbContext. Así la auditoría sobrevive al request sin tocar el AppDbContext Scoped ya
+    /// dispuesto, evitando el ObjectDisposedException.
     /// </summary>
-    private async Task LogFailedLoginAsync(string email, string ipAddress, string reason)
+    private void LogFailedLoginAsync(string email, string ipAddress, string reason)
     {
-        try
+        _ = Task.Run(async () =>
         {
-            // Registrar en auditoría de seguridad especializada (Req 3.4)
-            await _securityAuditService.LogAuthenticationFailedAsync(email, ipAddress, reason);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to log security audit for failed login from {Email}", email);
-        }
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var securityAuditService = scope.ServiceProvider.GetRequiredService<ISecurityAuditService>();
+                // Registrar en auditoría de seguridad especializada (Req 3.4)
+                await securityAuditService.LogAuthenticationFailedAsync(email, ipAddress, reason);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to log security audit for failed login from {Email}", email);
+            }
+        });
     }
 }

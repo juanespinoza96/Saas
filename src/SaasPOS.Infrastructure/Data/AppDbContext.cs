@@ -37,6 +37,7 @@ public class AppDbContext : DbContext
     public DbSet<ConfiguracionSucursal> ConfiguracionesSucursal => Set<ConfiguracionSucursal>();
     public DbSet<ConfiguracionComprobante> ConfiguracionesComprobante => Set<ConfiguracionComprobante>();
     public DbSet<SolicitudRecuperacion> SolicitudesRecuperacion => Set<SolicitudRecuperacion>();
+    public DbSet<JtiRevocado> JtiRevocados => Set<JtiRevocado>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -476,6 +477,24 @@ public class AppDbContext : DbContext
             e.HasIndex(s => s.Estado)
                 .HasFilter("\"Estado\" = 'Pendiente'")
                 .HasDatabaseName("idx_solicitudes_recuperacion_estado");
+        });
+
+        // ── JtiRevocados ───────────────────────────────────────────────────────────
+        // Estado de seguridad GLOBAL (revocación de tokens individuales). Igual que
+        // LogAuditoria, NO lleva query filter de tenant: un jti se revoca y consulta
+        // sin contexto de comercio.
+        modelBuilder.Entity<JtiRevocado>(e =>
+        {
+            e.HasKey(j => j.Id);
+            e.Property(j => j.Jti).HasMaxLength(255).IsRequired();
+            // UTC explícito, igual que FechaExpiracion en AddPasswordRecoveryFields.
+            e.Property(j => j.Expiracion).HasColumnType("timestamp with time zone");
+            e.Property(j => j.FechaRevocacion).HasColumnType("timestamp with time zone");
+            // Índice ÚNICO sobre Jti: idempotencia de la revocación y lookup O(1).
+            e.HasIndex(j => j.Jti).IsUnique().HasDatabaseName("ix_jti_revocados_jti");
+            // Índice sobre Expiracion: barrido eficiente de filas vencidas.
+            e.HasIndex(j => j.Expiracion).HasDatabaseName("ix_jti_revocados_expiracion");
+            // Sin HasQueryFilter: estado de seguridad global (análogo a LogAuditoria).
         });
     }
 }

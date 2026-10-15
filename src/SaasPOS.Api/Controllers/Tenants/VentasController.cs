@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SaasPOS.Api.Extensions;
 using SaasPOS.Application.DTOs;
 using SaasPOS.Application.Helpers;
@@ -20,7 +21,10 @@ public class VentasController : ControllerBase
     private readonly IStockService _stockService;
     private readonly IAuditService _auditService;
     private readonly IComprobantesConfigService _comprobantesConfigService;
-    private readonly ISecurityAuditService _securityAuditService;
+    // IServiceScopeFactory en lugar de ISecurityAuditService: la auditoría de violación de
+    // acceso es fire-and-forget y sobrevive al request, por lo que crea su propio scope en vez
+    // de reutilizar el AppDbContext Scoped del request (evita ObjectDisposedException).
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ITimezoneService _timezoneService;
 
     public VentasController(
@@ -29,7 +33,7 @@ public class VentasController : ControllerBase
         IStockService stockService,
         IAuditService auditService,
         IComprobantesConfigService comprobantesConfigService,
-        ISecurityAuditService securityAuditService,
+        IServiceScopeFactory scopeFactory,
         ITimezoneService timezoneService)
     {
         _db = db;
@@ -37,7 +41,7 @@ public class VentasController : ControllerBase
         _stockService = stockService;
         _auditService = auditService;
         _comprobantesConfigService = comprobantesConfigService;
-        _securityAuditService = securityAuditService;
+        _scopeFactory = scopeFactory;
         _timezoneService = timezoneService;
     }
 
@@ -504,7 +508,7 @@ public class VentasController : ControllerBase
                 {
                     // Req 3.4: Registrar violación de acceso en auditoría de seguridad
                     var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                    _ = _securityAuditService.LogAccessViolationAsync(
+                    LogAccessViolation(
                         comercioId, GetUsuarioId(), ipAddress,
                         HttpContext.Request.Path.ToString(),
                         "Cajero intentó acceder a ventas con MostrarVentasAlCajero deshabilitado");
@@ -516,7 +520,7 @@ public class VentasController : ControllerBase
             {
                 // Si el Cajero no tiene sucursal asignada, denegar acceso por seguridad
                 var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                _ = _securityAuditService.LogAccessViolationAsync(
+                LogAccessViolation(
                     comercioId, GetUsuarioId(), ipAddress,
                     HttpContext.Request.Path.ToString(),
                     "Cajero sin sucursal asignada intentó acceder a ventas");
@@ -611,4 +615,31 @@ public class VentasController : ControllerBase
 
     private int GetUsuarioId() =>
         int.Parse(User.FindFirstValue("sub")!);
+
+    /// <summary>
+    /// Registra una violación de acceso en la auditoría de seguridad (Req 3.4) como
+    /// fire-and-forget, sin afectar la latencia de la respuesta 403.
+    ///
+    /// Crea su PROPIO scope de DI (igual que AuthController.LogFailedLoginAsync y los
+    /// middlewares de seguridad) y resuelve un ISecurityAuditService con su propio AppDbContext.
+    /// Así la auditoría sobrevive al request sin tocar el AppDbContext Scoped ya dispuesto,
+    /// evitando el ObjectDisposedException. Los valores se reciben por parámetro (capturados por
+    /// valor) para no referenciar estado del request desde la tarea en segundo plano.
+    /// </summary>
+    private void LogAccessViolation(int comercioId, int usuarioId, string ipAddress, string path, string reason)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var securityAuditService = scope.ServiceProvider.GetRequiredService<ISecurityAuditService>();
+                await securityAuditService.LogAccessViolationAsync(comercioId, usuarioId, ipAddress, path, reason);
+            }
+            catch
+            {
+                // La auditoría de seguridad nunca debe romper el flujo del request; se ignora el fallo.
+            }
+        });
+    }
 }
