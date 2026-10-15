@@ -18,7 +18,6 @@ public class AuthController : ControllerBase
     private readonly IJtiBlocklist _jtiBlocklist;
     private readonly IAccountLockoutService _accountLockout;
     private readonly ILoginAttemptTracker _loginAttemptTracker;
-    private readonly IAuditService _auditService;
     // IServiceScopeFactory en lugar de ISecurityAuditService: la auditoría de login fallido
     // es fire-and-forget y sobrevive al request, por lo que NO debe reutilizar servicios Scoped
     // (ni su AppDbContext) capturados del request. Cada tarea crea su propio scope.
@@ -34,7 +33,6 @@ public class AuthController : ControllerBase
         IJtiBlocklist jtiBlocklist,
         IAccountLockoutService accountLockout,
         ILoginAttemptTracker loginAttemptTracker,
-        IAuditService auditService,
         IServiceScopeFactory scopeFactory,
         ILogger<AuthController> logger)
     {
@@ -42,7 +40,6 @@ public class AuthController : ControllerBase
         _jtiBlocklist = jtiBlocklist;
         _accountLockout = accountLockout;
         _loginAttemptTracker = loginAttemptTracker;
-        _auditService = auditService;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
