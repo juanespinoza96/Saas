@@ -124,7 +124,7 @@ Una vez que una migración ha sido aplicada en **cualquier entorno** (desarrollo
 Usar nombres que describan el cambio realizado:
 - ✅ `AddPaymentFields`
 - ✅ `CreateIndexOnVentasFecha`
-- ✅ `AddPermitePrecioNegociado`
+- ✅ `AddJtiRevocados`
 - ❌ `Update1`
 - ❌ `Fix`
 - ❌ `Cambios`
@@ -226,11 +226,63 @@ dotnet ef migrations script MigracionActual MigracionAnterior \
 
 | Migración | Descripción |
 |-----------|-------------|
-| `20260620051231_InitialCreate` | Esquema inicial completo (todas las tablas, índices, FKs) |
-| `20260623121700_AddPaymentFields` | Campos de métodos de pago en Ventas |
-| `20260625100000_AddPermitePrecioNegociado` | Campo para precio negociado en configuración |
-| `20260717180830_AddTimezoneColumns` | Columnas de zona horaria |
-| `20260804204508_AddTrialFields` | Campos para período de prueba en Comercios |
+| `20261014194408_InitialBaseline` | Baseline única: crea todo el esquema actual (tablas, índices, FKs) más los seeds de `ConfiguracionesComprobante` y el UPDATE legacy de `Ventas.TipoComprobante`. Colapsa la cadena anterior de 7 migraciones, que era inaplicable por un orden ALTER-antes-de-CREATE. |
+| `20261014210435_AddJtiRevocados` | Crea la tabla `JtiRevocados` (revocación de JTI individual persistida), con índice único sobre `Jti` e índice sobre `Expiracion`. |
+| `20261016025512_LogAuditoriaComercioIdNullable` | Hace `LogsAuditoria.ComercioId` nullable y cambia la FK a `ON DELETE SET NULL`, para registrar eventos de seguridad a nivel de sistema sin violar la integridad referencial. |
+
+---
+
+## Validación de deriva de esquema
+
+Para garantizar que las migraciones versionadas describen exactamente el modelo EF actual, existe un test de integración `SchemaDriftTests` en `src/SaasPOS.Tests/Integration/SchemaDriftTests.cs`. Sobre una base limpia levantada con Testcontainers.PostgreSQL, el test:
+
+1. Aplica **todas** las migraciones con `MigrateAsync()`.
+2. Verifica que las 3 migraciones vigentes queden registradas en `__EFMigrationsHistory`.
+3. Afirma `Assert.False(context.Database.HasPendingModelChanges())`.
+
+### Por qué `HasPendingModelChanges()` y no inspección de `information_schema`
+
+El test usa `HasPendingModelChanges()` en lugar de inspeccionar `information_schema` columna por columna porque:
+
+- **Compara el modelo correcto:** `HasPendingModelChanges()` contrasta el modelo EF compilado contra el snapshot de la última migración (`AppDbContextModelSnapshot.cs`), que es justo lo que queremos validar: que no haya deriva entre modelo y migraciones.
+- **Es nativo de EF Core 9:** no depende del dialecto SQL ni de la versión del motor, y entrega un veredicto binario estable (hay o no hay cambios pendientes).
+- **Inspeccionar `information_schema` sería frágil:** obligaría a replicar el mapeo CLR→PostgreSQL de Npgsql, produciría falsos positivos por diferencias de precisión/escala/colación y acoplaría el test a la versión concreta del proveedor.
+
+El test se ejecuta con `dotnet test` como un test de migración más; no hay pipeline CI asociado.
+
+---
+
+## Aplicación en producción (camino futuro — NO ejecutado en esta etapa)
+
+Hoy, en **Development**, el esquema se monta con `EnsureCreated()` (invocado en `Program.cs` únicamente en Development). **En esta etapa NO se aplica ningún mecanismo automático de migraciones en producción.** Esta sección documenta las vías recomendadas para el futuro, que **no se ejecutan ahora**:
+
+1. **Script idempotente revisado por el DBA:** aplicar `migrations-initial.sql` (revisado y aprobado por el DBA), siguiendo el flujo ya descrito en "Flujo de Trabajo para Producción".
+2. **`Migrate()` / `MigrateAsync()` controlado al arranque:** aplicar las migraciones de forma controlada al iniciar la aplicación, con las precauciones de reconciliación necesarias. En particular, las bases creadas con `EnsureCreated()` **NO** tienen la tabla `__EFMigrationsHistory` y, por tanto, **no son directamente compatibles** con `MigrateAsync()` (ver "Recrear la base de datos de desarrollo").
+
+> **Restricción:** `EnsureCreated()` queda limitado a Development y a la suite de tests. Nunca debe usarse en producción.
+
+---
+
+## Recrear la base de datos de desarrollo
+
+Una base creada con `EnsureCreated()` **NO** contiene la tabla `__EFMigrationsHistory`. Por eso `MigrateAsync()` / `dotnet ef database update` no la reconoce como migrada y puede fallar o intentar recrear objetos que ya existen. Para pasar al flujo de migraciones hay que partir de una base limpia.
+
+Procedimiento (drop + migrate):
+
+1. **Backup:** si hay datos que conservar, respaldarlos antes de continuar.
+2. **Dropear/recrear la base vacía:** eliminar la base de desarrollo y volver a crearla sin objetos.
+3. **Aplicar migraciones:**
+   ```bash
+   dotnet ef database update \
+     --project src/SaasPOS.Infrastructure \
+     --startup-project src/SaasPOS.Api
+   ```
+4. **Verificar que no hay cambios pendientes:**
+   ```bash
+   dotnet ef migrations has-pending-model-changes \
+     --project src/SaasPOS.Infrastructure \
+     --startup-project src/SaasPOS.Api
+   ```
 
 ---
 
@@ -239,14 +291,17 @@ dotnet ef migrations script MigracionActual MigracionAnterior \
 ```
 src/SaasPOS.Infrastructure/
 ├── Data/
-│   ├── AppDbContext.cs                          # DbContext principal
-│   ├── DesignTimeDbContextFactory.cs            # Factory para design-time (migraciones)
-│   ├── Configurations/                          # EntityTypeConfiguration<T> por entidad
+│   ├── AppDbContext.cs                                      # DbContext principal
+│   ├── DesignTimeDbContextFactory.cs                        # Factory para design-time (migraciones)
+│   ├── Configurations/                                      # EntityTypeConfiguration<T> por entidad
 │   └── Migrations/
-│       ├── 20260620051231_InitialCreate.cs      # Migración inicial
-│       ├── 20260620051231_InitialCreate.Designer.cs
-│       ├── ...                                  # Migraciones subsiguientes
-│       └── AppDbContextModelSnapshot.cs         # Estado actual del modelo
+│       ├── 20261014194408_InitialBaseline.cs                # Baseline única (todo el esquema)
+│       ├── 20261014194408_InitialBaseline.Designer.cs
+│       ├── 20261014210435_AddJtiRevocados.cs                # Tabla JtiRevocados
+│       ├── 20261014210435_AddJtiRevocados.Designer.cs
+│       ├── 20261016025512_LogAuditoriaComercioIdNullable.cs # LogsAuditoria.ComercioId nullable
+│       ├── 20261016025512_LogAuditoriaComercioIdNullable.Designer.cs
+│       └── AppDbContextModelSnapshot.cs                     # Estado actual del modelo
 ```
 
 ---
