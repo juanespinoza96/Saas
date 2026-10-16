@@ -79,6 +79,11 @@ builder.Services.AddScoped<ITrialService, TrialService>();
 // Servicio en segundo plano que elimina/expira solicitudes de recuperación vencidas cada 15 min.
 builder.Services.AddHostedService<PasswordRecoveryCleanupBackgroundService>();
 
+// ── JTI Revocation Cleanup (Req 10.5: barrido periódico de tokens JWT revocados vencidos) ─
+// Servicio en segundo plano que elimina de JtiRevocados las filas ya vencidas cada 30 min,
+// manteniendo acotada la tabla de revocación de JTI individual (estado de seguridad global).
+builder.Services.AddHostedService<JtiRevocadoCleanupBackgroundService>();
+
 // ── Report Engine (Req 13.x: report generation and export) ────────────────────
 builder.Services.AddScoped<IReportEngine, ReportEngine>();
 
