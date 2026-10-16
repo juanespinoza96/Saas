@@ -10,9 +10,11 @@ namespace SaasPOS.Tests.Integration;
 /// Prueba de integración de esquema/migración para la funcionalidad de
 /// recuperación de contraseña jerárquica (tarea 3.1, valida tareas 1 y 2).
 ///
-/// Aplica la migración EF Core (incluida AddPasswordRecoveryFields) sobre un
-/// contenedor PostgreSQL limpio con Testcontainers y verifica que las columnas
-/// añadidas existen con el tipo y nulabilidad esperados.
+/// Aplica todas las migraciones EF Core sobre un contenedor PostgreSQL limpio
+/// con Testcontainers y verifica que las columnas de recuperación de contraseña
+/// existen con el tipo y nulabilidad esperados. En este proyecto dichas columnas
+/// se consolidan en la migración InitialBaseline (no existe una migración separada
+/// "AddPasswordRecoveryFields").
 ///
 /// Requisitos: 16.1, 16.2, 16.3, 16.4
 /// </summary>
@@ -95,22 +97,40 @@ public class PasswordRecoverySchemaMigrationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Verifica que al aplicar todas las migraciones sobre un contenedor limpio,
-    /// la migración AddPasswordRecoveryFields queda registrada en el historial.
+    /// Verifica que, tras aplicar todas las migraciones sobre un contenedor limpio,
+    /// las columnas de recuperación de contraseña quedan materializadas en el esquema.
+    /// En este proyecto dichas columnas se consolidan en la migración InitialBaseline
+    /// (no existe una migración separada "AddPasswordRecoveryFields"), por lo que la
+    /// prueba comprueba el resultado efectivo en el esquema y no un nombre de migración.
     /// _Requirements: 16.4_
     /// </summary>
     [DockerAvailableFact]
-    public async Task Migrate_RegistraMigracionAddPasswordRecoveryFields()
+    public async Task Migrate_MaterializaColumnasDeRecuperacionPassword()
     {
         // Arrange: base de datos completamente vacía.
         await using var context = CreateContext();
 
-        // Act: aplicar todas las migraciones pendientes.
+        // Act: aplicar todas las migraciones sobre la base limpia.
         await context.Database.MigrateAsync();
 
-        // Assert: la migración de recuperación de contraseña está aplicada.
+        // Assert: hay migraciones aplicadas y las columnas de recuperación de contraseña
+        // quedaron materializadas (se consolidan en InitialBaseline, no en una migración aparte).
         var aplicadas = await context.Database.GetAppliedMigrationsAsync();
-        Assert.Contains(aplicadas, m => m.Contains("AddPasswordRecoveryFields"));
+        Assert.NotEmpty(aplicadas);
+
+        var columnasRecuperacion = new (string Tabla, string Columna)[]
+        {
+            ("Usuarios", "DebeCambiarPassword"),
+            ("SolicitudesRecuperacion", "PasswordTemporalCifrada"),
+            ("SolicitudesRecuperacion", "FechaExpiracion"),
+            ("SolicitudesRecuperacion", "MotivoRechazo")
+        };
+
+        foreach (var (tabla, columna) in columnasRecuperacion)
+        {
+            var info = await GetColumnInfoAsync(context, tabla, columna);
+            Assert.True(info != null, $"La columna {tabla}.{columna} debe existir tras aplicar las migraciones.");
+        }
     }
 
     /// <summary>
