@@ -400,7 +400,7 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<int>("ComercioId")
+                    b.Property<int?>("ComercioId")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("FechaHora")
@@ -1091,8 +1091,7 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.HasOne("SaasPOS.Domain.Entities.Comercio", "Comercio")
                         .WithMany("LogsAuditoria")
                         .HasForeignKey("ComercioId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("SaasPOS.Domain.Entities.Usuario", "Usuario")
                         .WithMany("LogsAuditoria")

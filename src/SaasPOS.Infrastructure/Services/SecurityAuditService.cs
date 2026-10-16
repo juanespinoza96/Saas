@@ -29,7 +29,7 @@ public class SecurityAuditService : ISecurityAuditService
         {
             var log = new LogAuditoria
             {
-                ComercioId = 0,
+                ComercioId = null, // Evento de seguridad a nivel de sistema: no hay comercio asociado
                 UsuarioId = null,
                 Accion = "AutenticacionFallida",
                 FechaHora = DateTime.UtcNow,
@@ -61,7 +61,7 @@ public class SecurityAuditService : ISecurityAuditService
         {
             var log = new LogAuditoria
             {
-                ComercioId = comercioId ?? 0,
+                ComercioId = comercioId, // null cuando no se resolvió el comercio (p. ej. cajero sin sucursal)
                 UsuarioId = usuarioId,
                 Accion = "ViolacionAcceso",
                 FechaHora = DateTime.UtcNow,
@@ -93,7 +93,7 @@ public class SecurityAuditService : ISecurityAuditService
         {
             var log = new LogAuditoria
             {
-                ComercioId = 0,
+                ComercioId = null, // Evento de seguridad a nivel de sistema: no hay comercio asociado
                 UsuarioId = null,
                 Accion = "ErrorValidacionEntrada",
                 FechaHora = DateTime.UtcNow,

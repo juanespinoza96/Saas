@@ -426,7 +426,7 @@ public partial class TrialService : ITrialService
             // Como ComercioId es requerido, usamos el superAdminId como referencia del usuario.
             var logAuditoria = new LogAuditoria
             {
-                ComercioId = 0, // No hay comercio asociado en intentos rechazados
+                ComercioId = null, // No hay comercio asociado en intentos rechazados
                 UsuarioId = superAdminId,
                 Accion = "Trial_Rechazado",
                 FechaHora = DateTime.UtcNow,

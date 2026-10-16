@@ -438,10 +438,15 @@ public class AppDbContext : DbContext
             e.Property(l => l.RegistroId).HasMaxLength(100).IsRequired();
             e.Property(l => l.ValoresAnteriores).HasColumnType("jsonb");
             e.Property(l => l.ValoresNuevos).HasColumnType("jsonb");
+            // ComercioId es nullable: los eventos de seguridad a nivel de sistema (login
+            // fallido, violación de acceso sin comercio, error de validación de entrada,
+            // trial rechazado) no tienen comercio asociado. Se usa SET NULL para no violar
+            // la FK con un valor centinela inexistente.
             e.HasOne(l => l.Comercio)
                 .WithMany(c => c.LogsAuditoria)
                 .HasForeignKey(l => l.ComercioId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
             // ON DELETE SET NULL for UsuarioId
             e.HasOne(l => l.Usuario)
                 .WithMany(u => u.LogsAuditoria)

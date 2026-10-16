@@ -5,7 +5,7 @@ namespace SaasPOS.Application.DTOs;
 /// </summary>
 public record LogAuditoriaDto(
     int Id,
-    int ComercioId,
+    int? ComercioId,
     int? UsuarioId,
     string Accion,
     DateTime FechaHora,
