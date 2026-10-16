@@ -149,7 +149,6 @@ public class PrecioNegociado_ToggleConfigurationTests : IDisposable
         // Arrange — set up a sucursal and configuration in DB
         var comercioId = 1;
         var sucursalId = 5;
-        var usuarioId = 10;
 
         _db.Sucursales.Add(new Sucursal
         {

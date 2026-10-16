@@ -68,9 +68,9 @@ public class PrecioNegociado_Property11_BarEscolarRejectsTests
 
         return Prop.ForAll(gen.ToArbitrary(), lines =>
         {
-            // Configuration: Bar Escolar active, toggle enabled (shouldn't matter)
+            // Configuración: Bar Escolar activo. El toggle PermitePrecioNegociado no se
+            // modela aquí porque EsBarEscolar tiene prioridad y siempre fuerza el rechazo.
             const bool esBarEscolar = true;
-            const bool permitePrecioNegociado = true;
 
             // Simulate the controller's validation logic
             bool tieneLineasNegociadas = lines.Any(l => l.HasValue);
