@@ -220,6 +220,19 @@ class ApiClient {
     return fetchPromise
   }
 
+  /**
+   * Renueva el access token mediante POST /api/tenants/auth/refresh (sin cuerpo).
+   * Se apoya en `post`, por lo que reutiliza automáticamente la inyección del
+   * header `Authorization: Bearer <token>`, el header `X-Timezone` y, sobre todo,
+   * el manejo de 401: si el servidor responde 401 (token caducado/revocado o
+   * corte masivo), el interceptor existente dispara `onUnauthorized` (ver
+   * `setOnUnauthorized`), tratando la sesión como terminada. No se duplica la
+   * lógica de fetch. El cuerpo va `undefined`, así que `request` no añade `body`.
+   */
+  refresh(): Promise<{ token: string }> {
+    return this.post<{ token: string }>('/api/tenants/auth/refresh')
+  }
+
   get<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'GET' })
   }

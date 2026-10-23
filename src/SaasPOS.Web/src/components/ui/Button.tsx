@@ -1,4 +1,4 @@
-import { type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 type ButtonVariant = 'confirm' | 'edit' | 'danger' | 'neutral'
 
@@ -31,18 +31,22 @@ const variantClasses: Record<ButtonVariant, string> = {
  * 
  * Disables during loading to prevent duplicate submissions (Req 21.14).
  */
-export function Button({
-  variant = 'neutral',
-  loading = false,
-  disabled,
-  children,
-  className = '',
-  ...props
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    variant = 'neutral',
+    loading = false,
+    disabled,
+    children,
+    className = '',
+    ...props
+  },
+  ref,
+) {
   const isDisabled = disabled || loading
 
   return (
     <button
+      ref={ref}
       className={`
         inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
         text-sm font-medium transition-all duration-150
@@ -82,4 +86,4 @@ export function Button({
       {children}
     </button>
   )
-}
+})

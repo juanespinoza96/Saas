@@ -2,6 +2,10 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import { jwtDecode } from 'jwt-decode'
 import type { AuthState, JwtClaims, UserRole } from '../types/auth'
 import { useInactivityTimeout } from '../hooks/useInactivityTimeout'
+import { useSessionClock } from '../hooks/useSessionClock'
+import { AvisoTemprano } from '../components/sesion/AvisoTemprano'
+import { ModalConfirmacion } from '../components/sesion/ModalConfirmacion'
+import { BloqueoTotal } from '../components/sesion/BloqueoTotal'
 import { api } from '../lib/api'
 
 interface AuthContextValue extends AuthState {
@@ -102,8 +106,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Indica si el usuario debe cambiar su contraseña, según el claim del JWT (Req 8.1, 9.1)
   const mustChangePassword = state.claims?.must_change_password === true
 
-  // Inactivity timeout: auto-logout after 30 minutes (Req 3.3)
-  useInactivityTimeout(logout, 30 * 60 * 1000, state.isAuthenticated)
+  // Reloj único de sesión: ÚNICA fuente de verdad del lado cliente (Req 7.1, 7.2).
+  // Gobierna la renovación silenciosa del access token y el disparo de las tres
+  // etapas de aviso de expiración (`stage`/`remainingMs`), que se renderizan más
+  // abajo de forma secuencial y no solapada (AvisoTemprano/ModalConfirmacion/
+  // BloqueoTotal).
+  const sessionClock = useSessionClock({
+    token: state.token,
+    claims: state.claims,
+    enabled: state.isAuthenticated,
+    logout,
+    // Al renovar silenciosamente, re-decodificar claims y reprogramar vía `login`.
+    onTokenRenewed: login,
+  })
+
+  // Señal de actividad: cada evento de actividad REINICIA el reloj único
+  // (reinicia `ultimaActividad`/`deadline`), en lugar de cerrar sesión directamente.
+  // No hay temporizador paralelo que compita con el reloj único (Req 2.5, 7.2, 7.3).
+  useInactivityTimeout(sessionClock.resetClock, state.isAuthenticated)
 
   // Registrar interceptor de 401 para cerrar sesión automáticamente
   // cuando el servidor invalida el token (usuario desactivado, JTI bloqueado, etc.)
@@ -124,6 +144,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+
+      {/* Avisos de expiración de sesión: se muestran de forma secuencial y no
+          solapada según la etapa derivada del reloj único (Req 5.x, 6.x). Solo
+          con sesión activa. */}
+      {state.isAuthenticated && sessionClock.stage === 'early' && (
+        <AvisoTemprano remainingMs={sessionClock.remainingMs} />
+      )}
+      {state.isAuthenticated && sessionClock.stage === 'modal' && (
+        <ModalConfirmacion
+          remainingMs={sessionClock.remainingMs}
+          onSeguirConectado={sessionClock.renewNow}
+        />
+      )}
+      {state.isAuthenticated && sessionClock.stage === 'block' && (
+        <BloqueoTotal remainingMs={sessionClock.remainingMs} onExpirado={logout} />
+      )}
     </AuthContext.Provider>
   )
 }
