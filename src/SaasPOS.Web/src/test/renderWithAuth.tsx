@@ -125,5 +125,7 @@ export const testJwtClaims: JwtClaims = {
   role: 'Cajero',
   jti: 'test-jti',
   exp: Math.floor(Date.now() / 1000) + 60 * 60,
+  // login_at obligatorio: marca del login original (aquí igual a "ahora" para pruebas)
+  login_at: Math.floor(Date.now() / 1000),
   comercio_nombre: 'Comercio Demo',
 }
