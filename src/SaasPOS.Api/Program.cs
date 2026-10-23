@@ -432,12 +432,29 @@ builder.Services.Configure<CookiePolicyOptions>(options =>
     options.Secure = CookieSecurePolicy.Always;
     options.MinimumSameSitePolicy = SameSiteMode.Strict;
 });
+// Spec sesion-inactividad-y-expiracion-por-rol (Tarea 5.1, Req 1.2):
+// Desacople del MaxAge de la cookie antiforgery respecto de la vida del access
+// token. Antes se ataba a JwtSettings:ExpirationMinutes (p. ej. 60 min), lo que
+// hacia caducar la proteccion CSRF en minutos. Con la sliding expiration por rol,
+// la vida del token es corta y se renueva en silencio, de modo que atar el
+// antiforgery a ese valor romperia el POST protegido tras una renovacion. Por eso
+// el MaxAge se ata ahora al TOPE ABSOLUTO MAXIMO de la sesion (el mayor entre
+// AbsoluteMaxMinutesByRole y AbsoluteMaxMinutesDefault): la cookie CSRF vive, como
+// mucho, lo que puede vivir la sesion mas larga posible, nunca menos.
+var absoluteMaxDefault = config.GetValue("JwtSettings:AbsoluteMaxMinutesDefault", 720);
+var antiforgeryMaxAgeMinutes = config
+    .GetSection("JwtSettings:AbsoluteMaxMinutesByRole")
+    .GetChildren()
+    .Select(c => c.Get<int>())
+    .Append(absoluteMaxDefault)
+    .Max();
 builder.Services.AddAntiforgery(options =>
 {
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Strict;
-    options.Cookie.MaxAge = TimeSpan.FromMinutes(jwtExpirationMinutes);
+    // MaxAge atado al tope absoluto maximo de sesion, no a la vida del access token.
+    options.Cookie.MaxAge = TimeSpan.FromMinutes(antiforgeryMaxAgeMinutes);
 });
 
 // ── Controllers + Swagger ─────────────────────────────────────────────────────

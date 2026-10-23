@@ -7,6 +7,7 @@ using SaasPOS.Application.DTOs;
 using SaasPOS.Application.DTOs.Results;
 using SaasPOS.Application.Interfaces;
 using SaasPOS.Api.Middleware;
+using SaasPOS.Infrastructure.Services;
 
 namespace SaasPOS.Api.Controllers;
 
@@ -15,7 +16,11 @@ namespace SaasPOS.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
-    private readonly IJtiBlocklist _jtiBlocklist;
+    // Tipo concreto JtiBlocklist (no la interfaz IJtiBlocklist) porque el endpoint Refresh
+    // necesita IsUserBlocked/IsComercioBlocked, que solo existen en el concreto. Resoluble por
+    // DI: Program.cs registra AddSingleton<JtiBlocklist>(). El contrato de IJtiBlocklist no se
+    // toca (Req 9.5); el logout sigue usando AddToBlocklist, también disponible en el concreto.
+    private readonly JtiBlocklist _jtiBlocklist;
     private readonly IAccountLockoutService _accountLockout;
     private readonly ILoginAttemptTracker _loginAttemptTracker;
     // IServiceScopeFactory en lugar de ISecurityAuditService: la auditoría de login fallido
@@ -30,7 +35,7 @@ public class AuthController : ControllerBase
 
     public AuthController(
         IAuthService authService,
-        IJtiBlocklist jtiBlocklist,
+        JtiBlocklist jtiBlocklist,
         IAccountLockoutService accountLockout,
         ILoginAttemptTracker loginAttemptTracker,
         IServiceScopeFactory scopeFactory,
@@ -345,6 +350,78 @@ public class AuthController : ControllerBase
             _ => BadRequest(
                 new { message = result.ErrorMessage ?? "No se pudo cambiar la contraseña." }),
         };
+    }
+
+    /// <summary>
+    /// Renovación silenciosa del access token (sliding expiration, Req 1.3, 1.4, 1.5, 1.6).
+    ///
+    /// Va protegido con [Authorize] (SIN [AllowAnonymous]): AddJwtBearer ya validó la firma y la
+    /// vida del token (ValidateLifetime = true), y el JtiValidationMiddleware ya rechazó los tokens
+    /// revocados ANTES de llegar aquí. Por tanto, en el handler los claims de User ya provienen de
+    /// un token auténtico y vigente; solo falta re-verificar el corte masivo contra el iat presentado
+    /// y validar el tope absoluto en el servicio.
+    ///
+    /// Todos los claims OBLIGATORIOS (sub, comercio_id, role, login_at, iat) se extraen con TryParse
+    /// y cualquier ausencia o invalidez retorna Unauthorized() (nunca Parse/! que derivarían en 500 en
+    /// una ruta de seguridad, Req 8.7). Los OPCIONALES (sucursal_id, must_change_password) se extraen
+    /// de forma tolerante: ausente/ininteligible = null/false, sin provocar error.
+    /// </summary>
+    [HttpPost("refresh")]
+    [Authorize]
+    public async Task<IActionResult> Refresh()
+    {
+        // ── Claims OBLIGATORIOS: TryParse → Unauthorized() ante cualquier ausencia/invalidez ──
+
+        // sub: el handler JWT mapea por defecto "sub" a ClaimTypes.NameIdentifier; se intenta primero
+        // ese y, como respaldo, el claim crudo "sub" (mismo patrón que el resto de acciones).
+        var subClaim = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                       ?? User.FindFirstValue("sub");
+        if (!int.TryParse(subClaim, out var userId))
+            return Unauthorized();
+
+        if (!int.TryParse(User.FindFirstValue("comercio_id"), out var comercioId))
+            return Unauthorized();
+
+        var role = User.FindFirstValue("role");
+        if (string.IsNullOrEmpty(role))
+            return Unauthorized();
+
+        // login_at: instante del login ORIGINAL (epoch UTC en segundos). Imprescindible para medir el
+        // tope absoluto; su ausencia/invalidez invalida la renovación.
+        if (!long.TryParse(User.FindFirstValue("login_at"), out var loginAtUnix))
+            return Unauthorized();
+
+        // iat: instante de emisión del token PRESENTADO (epoch UTC en segundos). Se usa para re-chequear
+        // el corte masivo contra el instante de corte registrado en el blocklist.
+        if (!long.TryParse(User.FindFirstValue("iat"), out var iat))
+            return Unauthorized();
+
+        // ── Claims OPCIONALES: extracción tolerante (ausente = null/false) ──
+
+        // sucursal_id: puede no venir (p. ej. Dueño sin sucursal); ausente o no parseable = null.
+        int? sucursalId = int.TryParse(User.FindFirstValue("sucursal_id"), out var s) ? s : null;
+
+        // must_change_password: solo se emite con valor "true"; cualquier otra cosa se interpreta como false.
+        var mustChangePassword = User.FindFirstValue("must_change_password") == "true";
+
+        // ── Re-chequeo del corte masivo con el iat PRESENTADO (Req 1.5, 4.5) ──
+
+        // Se reconstruye el iat a DateTime UTC y se consulta el corte masivo por usuario y por comercio.
+        // Si el token fue emitido antes de un corte masivo vigente, se niega la renovación SIN invocar al
+        // servicio. Estos métodos solo existen en el tipo concreto JtiBlocklist (por eso el campo es concreto).
+        var issuedAtPresentado = DateTimeOffset.FromUnixTimeSeconds(iat).UtcDateTime;
+        if (_jtiBlocklist.IsUserBlocked(userId, issuedAtPresentado)
+            || _jtiBlocklist.IsComercioBlocked(comercioId, issuedAtPresentado))
+            return Unauthorized();
+
+        // ── Renovación: el servicio valida el tope absoluto y re-emite propagando el login_at ──
+        var result = await _authService.RefreshTokenAsync(userId, comercioId, role, sucursalId, mustChangePassword, loginAtUnix);
+
+        // Fail = tope absoluto superado → 401; Ok = token renovado → 200 con { token }.
+        if (!result.Success)
+            return Unauthorized();
+
+        return Ok(new { token = result.Token });
     }
 
     /// <summary>

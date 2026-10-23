@@ -73,7 +73,11 @@ public class AuthService : IAuthService
             return AuthResult.Fail(GenericError);
 
         // Se propaga la Bandera_Cambio para que el JWT incluya el claim must_change_password cuando aplique (Req 8.1, 8.2, 8.3).
-        var token = GenerateJwt(user.Id, user.ComercioId, user.Rol, user.SucursalId, user.DebeCambiarPassword);
+        // Login ORIGINAL de la sesión: se pasa loginAtUnix: null de forma explícita para que GenerateJwt
+        // fije login_at = iat en el primer token (Req 4.1, 4.2). Este mismo flujo atiende también al
+        // SuperAdmin, que no tiene emisión de token propia; por tanto su primer token también fija
+        // login_at = iat. Las renovaciones posteriores propagarán este login_at sin modificarlo.
+        var token = GenerateJwt(user.Id, user.ComercioId, user.Rol, user.SucursalId, user.DebeCambiarPassword, loginAtUnix: null);
         return AuthResult.Ok(token);
     }
 
@@ -698,10 +702,65 @@ public class AuthService : IAuthService
         return ChangePasswordResult.Ok();
     }
 
-    private string GenerateJwt(int userId, int comercioId, string role, int? sucursalId, bool mustChangePassword = false)
+    /// <summary>
+    /// Renovación silenciosa del access token (Requirements 1.4, 4.2, 4.3, 4.4, 4.6, 4.7).
+    ///
+    /// Valida el tope absoluto duro del rol —medido desde el login_at original en UTC— y, si la sesión
+    /// aún está dentro de ese tope, re-emite el JWT con un nuevo jti/iat pero propagando el mismo
+    /// login_at, preservando los claims funcionales (Req 4.2, 1.6). Si el tope se supera, NO renueva
+    /// aunque el token presentado siga vigente (Req 4.4) y devuelve <see cref="RefreshResult.Fail"/>
+    /// (el controlador lo mapea a 401).
+    ///
+    /// El tope se resuelve con TryGetValue, NUNCA con indexación directa, para evitar
+    /// KeyNotFoundException ante un rol no listado y caer al fallback global (Req 3.6, 4.7).
+    ///
+    /// La firma NO recibe el iat presentado: el re-chequeo del corte masivo de JTI (iat vs. instante
+    /// de corte) vive en el controlador (AuthController), no en el servicio. Aquí solo se valida el
+    /// tope absoluto y se re-emite el token.
+    /// </summary>
+    public Task<RefreshResult> RefreshTokenAsync(int userId, int comercioId, string role, int? sucursalId, bool mustChangePassword, long loginAtUnix)
+    {
+        // Resolver el tope absoluto (minutos) del rol. TryGetValue evita KeyNotFoundException para
+        // roles no listados y cae al fallback global AbsoluteMaxMinutesDefault (Req 3.6).
+        var absoluteMax = _jwtSettings.AbsoluteMaxMinutesByRole.TryGetValue(role, out var m)
+            ? m
+            : _jwtSettings.AbsoluteMaxMinutesDefault;
+
+        // Tiempo transcurrido desde el login ORIGINAL, calculado íntegramente en UTC: login_at viaja
+        // como epoch en segundos UTC, por lo que se reconstruye a DateTime UTC y se compara contra
+        // DateTime.UtcNow para que la medición sea inmune a zonas horarias (Req 4.3).
+        var loginAtUtc = DateTimeOffset.FromUnixTimeSeconds(loginAtUnix).UtcDateTime;
+        var transcurrido = DateTime.UtcNow - loginAtUtc;
+
+        // Tope absoluto superado → no se renueva aunque el token presentado siga vigente (Req 4.4).
+        if (transcurrido > TimeSpan.FromMinutes(absoluteMax))
+            return Task.FromResult(RefreshResult.Fail());
+
+        // Dentro del tope → re-emitir propagando el MISMO login_at (se pasa explícitamente para que
+        // GenerateJwt no lo regenere) y preservando los claims funcionales. El nuevo token trae jti/iat
+        // frescos pero el tope absoluto se sigue midiendo desde el login inicial (Req 4.2, 1.6).
+        var token = GenerateJwt(userId, comercioId, role, sucursalId, mustChangePassword, loginAtUnix: loginAtUnix);
+        return Task.FromResult(RefreshResult.Ok(token));
+    }
+
+    private string GenerateJwt(int userId, int comercioId, string role, int? sucursalId, bool mustChangePassword = false, long? loginAtUnix = null)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        // Epoch del instante de emisión. Se reutiliza para iat (siempre regenerado por emisión) y,
+        // cuando loginAtUnix es null (login original), también para fijar login_at = iat (Req 4.1).
+        var nowUnix = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds();
+
+        // Invariante vida == ventana (Decisión 1): la vida del access token se IGUALA a la ventana de
+        // inactividad del rol. La fuente de verdad es InactivityMinutesByRole (fallback global
+        // InactivityMinutesDefault para un rol no listado, Req 3.6); NUNCA se toma de AccessTokenMinutesByRole
+        // —que es puramente documental— ni de ExpirationMinutes. Así el último token emitido sigue siendo
+        // válido hasta el deadline de inactividad, y los avisos y "Seguir conectado" operan sobre un token
+        // que el servidor aún acepta.
+        int accessMin = _jwtSettings.InactivityMinutesByRole.TryGetValue(role, out var i)
+            ? i
+            : _jwtSettings.InactivityMinutesDefault;
 
         var claims = new List<Claim>
         {
@@ -709,7 +768,11 @@ public class AuthService : IAuthService
             new("comercio_id", comercioId.ToString()),
             new("role", role),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(JwtRegisteredClaimNames.Iat, new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
+            new(JwtRegisteredClaimNames.Iat, nowUnix.ToString(), ClaimValueTypes.Integer64),
+            // login_at: instante del login ORIGINAL de la sesión (Req 4.1, 4.6). En el login original
+            // loginAtUnix es null y se fija login_at = iat; en una renovación se propaga el login_at
+            // recibido sin cambios, de modo que el tope absoluto se mide siempre desde el login inicial.
+            new("login_at", (loginAtUnix ?? nowUnix).ToString(), ClaimValueTypes.Integer64),
         };
 
         if (sucursalId.HasValue)
@@ -724,7 +787,8 @@ public class AuthService : IAuthService
             issuer: _jwtSettings.Issuer,
             audience: _jwtSettings.Audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
+            // Vida = ventana de inactividad del rol (invariante vida == ventana), no ExpirationMinutes.
+            expires: DateTime.UtcNow.AddMinutes(accessMin),
             signingCredentials: credentials
         );
 
