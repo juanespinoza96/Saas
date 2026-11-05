@@ -24,6 +24,8 @@
 | 2 | Estado de seguridad en memoria | Solo persiste el riesgo de **perder JTI revocados / lockouts / IPs al reiniciar** el proceso. El problema multi-nodo no existe en instancia única. | Seguridad | **Baja–Media** | **Alta** (bloqueante antes de escalar) |
 | 3 | Doble verificación de comercio suspendido | Consulta redundante a `Comercios` en 2 middlewares por request. | Rendimiento / Mantenibilidad | **Baja** | Baja |
 | 4 | CORS `AllowAnyHeader`/`AllowAnyMethod` | Métodos y cabeceras abiertos (orígenes sí restringidos). | Seguridad (hardening) | **Baja** | Baja |
+| 5 | OOM de la suite de tests del POS (Vitest) | `npm run test` (suite completa) aborta con "JavaScript heap out of memory"; mueren workers y el resumen "passed" es engañoso. Fuga de memoria monótona del harness, preexistente. | Mantenibilidad / Calidad (tooling de tests) | **Media** | Media (igual) |
+
 
 > **Cambio respecto a la versión anterior:** la Observación #1 (seguridad en memoria) baja de prioridad 1 a prioridad 2, porque en instancia única su peor escenario (multi-nodo) no ocurre. La Observación #2 (deriva de esquema) sube a prioridad 1, porque su riesgo es independiente del modo de despliegue: se materializa en cada release, con uno o con mil nodos.
 
@@ -117,3 +119,37 @@ Con el despliegue de **instancia única** confirmado y sin AWS:
 - **#3 y #4 siguen siendo quick wins de bajo impacto** (consolidar la consulta de suspensión; endurecer CORS).
 
 **Orden de trabajo sugerido:** #3 y #4 (quick wins rápidos) → #1 (red de seguridad en CI) → #2 (persistir JTI + documentar restricción de instancia única). La migración a Redis/multi-instancia se difiere hasta que el crecimiento de clientes lo justifique.
+---
+
+## 5. OOM de la suite de tests del POS (Vitest) — Severidad: Media (tooling de tests)
+
+**Ámbito:** frontend POS `src/SaasPOS.Web` (Vitest 2.1 + Testing Library + vitest-axe). No afecta al runtime de la aplicación ni al backend; es un problema del **harness de tests**.
+
+**Problema real:** al ejecutar la suite COMPLETA con `npm run test` (`vitest run`), el proceso de Node aborta por agotamiento de memoria. No es un test que falle por una aserción: es el runner que se queda sin heap a mitad de la corrida.
+
+**Síntomas observados:**
+- `FATAL ERROR: Ineffective mark-compacts near heap limit — JavaScript heap out of memory`.
+- Varios `Error: Worker exited unexpectedly` (tinypool).
+- Un resumen final **engañoso** del tipo `Test Files 23 passed (29)` / `Tests 244 passed (270)` / `Errors 6 errors`: los "passed" son parciales porque 6 workers (forks) murieron antes de poder reportar. **No es un verde real de la suite.**
+
+**Evidencia / diagnóstico (2026-10):** se reprodujo de dos formas:
+1. Suite completa tal cual → OOM, mueren workers.
+2. Suite completa **excluyendo** los 4 archivos de test de sesión más recientes (`useSessionClock.test.tsx`, `avisos.test.tsx`, `flujoAvisosSesion.test.tsx`, `session.test.ts`) → **mismo OOM**: `Test Files 23 passed (29)`, `Tests 244 passed (270)`, `Errors 6 errors` (6× `Worker exited unexpectedly`), `Duration ~389s`.
+
+**Conclusión del diagnóstico:** el OOM es **preexistente** y **NO lo causan** los tests de sesión; esos 4 archivos pasan en verde de forma aislada y en conjunto (31 tests, incluidos los chequeos de `vitest-axe`). Se trata de una **fuga de memoria monótona** del harness que se acumula entre archivos a lo largo de la corrida completa. El `vitest.config.ts` ya documenta en comentarios que el OOM persiste incluso con un solo fork.
+
+**Escenarios donde se manifiesta:**
+- Solo en la corrida **completa** (muchos archivos en secuencia), no en archivos sueltos. Por eso el crash aparece en archivos distintos según el orden (p. ej. durante `LoginPage.test.tsx`, `api.preservation.test.ts`, `api.test.ts`): cualquiera puede ser "el que colma el heap".
+- Se agrava con archivos de muchos renders de React Testing Library y con los property-based tests (`fast-check`), que multiplican objetos por archivo.
+- Persiste aun subiendo `--max-old-space-size`: un heap mayor solo **retrasa** el OOM, lo que confirma fuga monótona y no un pico puntual.
+
+**Configuración actual (mitigación parcial), en `src/SaasPOS.Web/vitest.config.ts`:** `pool: 'forks'`, `isolate: true`, `poolOptions.forks.maxForks: 2`, `minForks: 1`, `execArgv: ['--max-old-space-size=4096']`. Acota la concurrencia pero **no elimina** la fuga.
+
+**Vía de solución propuesta (aplicar más adelante, de menor a mayor esfuerzo):**
+1. **Reciclar el worker entre archivos:** configurar `poolOptions.forks` para que el fork se recicle cada N archivos (o por archivo) manteniendo `isolate: true`, de modo que el heap se libere entre archivos en lugar de acumularse durante toda la corrida.
+2. **Endurecer el `afterEach` global** en `src/test/setup.ts`: `cleanup()` de Testing Library, `vi.clearAllMocks()` / `vi.restoreAllMocks()`, `vi.useRealTimers()` y remoción de listeners globales (`window`/`document`) registrados por los tests, para cortar retenciones que impiden el GC.
+3. **Acotar los property-based tests:** fijar `numRuns` razonables en `fast-check` y evitar acumular estructuras grandes entre runs; revisar los `*.property.test.ts` y los PBT de `LoginPage`/`api.*`.
+4. **Auditar la fuga real:** correr con `--logHeapUsage` (y/o `node --expose-gc`) para localizar los archivos cuyo heap crece de forma monótona y atacar la retención concreta (timers, suscripciones, portales de React no desmontados).
+5. **Partir la corrida en CI (paliativo, no cura):** ejecutar la suite por lotes (`vitest run <glob>`) en jobs separados para que ningún proceso cargue con el heap de toda la suite.
+
+**Mientras no se resuelva:** para validar un área puntual, correr el archivo o carpeta específicos (p. ej. `vitest run src/hooks`) en lugar de la suite completa. El `Verify` de tareas que exijan "`npm run test` en verde" sobre la suite completa del POS queda condicionado a resolver esta observación.
