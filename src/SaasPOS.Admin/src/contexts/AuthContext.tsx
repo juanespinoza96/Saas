@@ -1,7 +1,12 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { jwtDecode } from 'jwt-decode'
 import type { AuthState, JwtClaims } from '../types/auth'
-import { clearApiCache } from '../lib/api'
+import { clearApiCache, setOnUnauthorized } from '../lib/api'
+import { useInactivityTimeout } from '../hooks/useInactivityTimeout'
+import { useSessionClock } from '../hooks/useSessionClock'
+import { AvisoTemprano } from '../components/sesion/AvisoTemprano'
+import { ModalConfirmacion } from '../components/sesion/ModalConfirmacion'
+import { BloqueoTotal } from '../components/sesion/BloqueoTotal'
 
 interface AuthContextValue extends AuthState {
   login: (token: string) => void
@@ -70,9 +75,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ token: null, claims: null, isAuthenticated: false })
   }, [])
 
+  // Reloj único de sesión: ÚNICA fuente de verdad del lado cliente (Req 7.1, 7.2).
+  // Gobierna la renovación silenciosa del access token y el disparo de las tres
+  // etapas de aviso de expiración (`stage`/`remainingMs`), que se renderizan más
+  // abajo de forma secuencial y no solapada (AvisoTemprano/ModalConfirmacion/
+  // BloqueoTotal). El Admin solo admite SuperAdmin → Nivel_Estricto (15 min / 4 h).
+  const sessionClock = useSessionClock({
+    token: state.token,
+    claims: state.claims,
+    enabled: state.isAuthenticated,
+    logout,
+    // Al renovar silenciosamente, re-decodificar claims y reprogramar vía `login`.
+    onTokenRenewed: login,
+  })
+
+  // Señal de actividad: cada evento de actividad REINICIA el reloj único
+  // (reinicia `ultimaActividad`/`deadline`), en lugar de cerrar sesión directamente.
+  // No hay temporizador paralelo que compita con el reloj único (Req 2.5, 7.2, 7.3).
+  useInactivityTimeout(sessionClock.resetClock, state.isAuthenticated)
+
+  // Registrar interceptor de 401 para cerrar sesión automáticamente cuando el
+  // servidor invalida el token (usuario desactivado, JTI bloqueado, tope absoluto,
+  // etc.). Paridad con el POS (Req 8.2).
+  useEffect(() => {
+    setOnUnauthorized(logout)
+  }, [logout])
+
   return (
     <AuthContext.Provider value={{ ...state, login, logout }}>
       {children}
+
+      {/* Avisos de expiración de sesión: se muestran de forma secuencial y no
+          solapada según la etapa derivada del reloj único (Req 5.x, 6.x). Solo
+          con sesión activa. */}
+      {state.isAuthenticated && sessionClock.stage === 'early' && (
+        <AvisoTemprano remainingMs={sessionClock.remainingMs} />
+      )}
+      {state.isAuthenticated && sessionClock.stage === 'modal' && (
+        <ModalConfirmacion
+          remainingMs={sessionClock.remainingMs}
+          onSeguirConectado={sessionClock.renewNow}
+        />
+      )}
+      {state.isAuthenticated && sessionClock.stage === 'block' && (
+        <BloqueoTotal remainingMs={sessionClock.remainingMs} onExpirado={logout} />
+      )}
     </AuthContext.Provider>
   )
 }

@@ -3,6 +3,8 @@
  * - GET requests se cachean por 30 segundos.
  * - Mutaciones (POST/PUT/PATCH/DELETE) invalidan el cache del endpoint afectado.
  * - Requests duplicados en vuelo se deduplican.
+ * - Ante un 401 del servidor se dispara el callback registrado con `setOnUnauthorized`
+ *   (paridad con el POS), para que el AuthContext cierre la sesión y redirija al login.
  */
 
 import { detectTimezone } from './dateUtils'
@@ -31,6 +33,21 @@ interface CacheEntry<T = unknown> {
 const cache = new Map<string, CacheEntry>()
 /** Requests en vuelo para deduplicación */
 const inflight = new Map<string, Promise<unknown>>()
+
+/**
+ * Callback invocado cuando el servidor responde 401 (sesión invalidada).
+ * Equivalente al interceptor del POS (`api.setOnUnauthorized`). Hoy el Admin solo
+ * lanzaba un Error genérico; con esto el AuthContext puede cerrar sesión ante un 401.
+ */
+let onUnauthorized: (() => void) | null = null
+
+/**
+ * Registra el callback que se ejecuta cuando el servidor responde 401.
+ * Permite al AuthContext cerrar la sesión y redirigir al login.
+ */
+export function setOnUnauthorized(callback: () => void): void {
+  onUnauthorized = callback
+}
 
 function getAuthToken(): string | null {
   try {
@@ -133,6 +150,10 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     })
 
     if (!response.ok) {
+      // Si el servidor responde 401, la sesión fue invalidada — cerrar sesión automáticamente
+      if (response.status === 401 && onUnauthorized) {
+        onUnauthorized()
+      }
       throw new Error(`API Error: ${response.status} ${response.statusText}`)
     }
 
@@ -168,6 +189,25 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
   }
 
   return fetchPromise
+}
+
+
+// --- Renovación silenciosa del access token ---
+
+/**
+ * Renueva el access token mediante POST /api/tenants/auth/refresh (sin cuerpo).
+ * El panel Admin autentica contra la ruta de tenant (ver LoginPage), por lo que
+ * reutiliza el mismo endpoint de refresh que el POS. Se apoya en `apiRequest`, de
+ * modo que hereda la inyección del header `Authorization: Bearer <token>`, el header
+ * `X-Timezone` y el manejo de 401: si el servidor responde 401 (token caducado/revocado
+ * o corte masivo), el interceptor dispara `onUnauthorized` y la sesión se trata como
+ * terminada. `skipCache` evita cachear la respuesta de una mutación.
+ */
+export function refresh(): Promise<{ token: string }> {
+  return apiRequest<{ token: string }>('/api/tenants/auth/refresh', {
+    method: 'POST',
+    skipCache: true,
+  })
 }
 
 
