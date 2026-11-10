@@ -80,7 +80,7 @@ export function computeWarningThresholds(inactivityMs: number): WarningThreshold
 
   // early: 5 min fijos para ventanas normales (≥15 min); ventanas cortas →
   // mitad de la ventana acotada a [30 s, 5 min].
-  let early = W >= 15 * 60_000
+  const early = W >= 15 * 60_000
     ? 5 * 60_000
     : clamp(W * 0.5, 30_000, 5 * 60_000)
 
