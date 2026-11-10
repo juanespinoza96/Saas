@@ -12,7 +12,10 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom',
+    // Se cambia el entorno de jsdom a happy-dom: con jsdom las suites POS
+    // (PosPreservation / PosNormalPage) agotaban el heap (~4 GB) al instanciar el
+    // entorno. jsdom sigue en package.json por si hay que revertir.
+    environment: 'happy-dom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     css: false,
