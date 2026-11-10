@@ -162,6 +162,10 @@ describe('Property 2: Preservation — Funcionalidad de clic y estructura visual
 
   afterEach(() => {
     cleanup()
+    // Vaciar las mockImplementation de api.get/api.post para soltar los closures
+    // que capturan productos/preciosMap generados por fast-check en cada iteración.
+    mockApiGet.mockReset()
+    mockApiPost.mockReset()
   })
 
   /**

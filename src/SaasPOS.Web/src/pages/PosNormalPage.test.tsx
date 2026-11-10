@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PosNormalPage } from './PosNormalPage'
 
 // Mock the API module (same pattern as PosBarPage.test.tsx)
@@ -91,6 +91,13 @@ describe('PosNormalPage — Precio Negociado UI & Payload', () => {
     vi.clearAllMocks()
     // Mock window.print to prevent actual print dialogs
     vi.spyOn(window, 'print').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    // Vaciar las mockImplementation de api.get/api.post para soltar los closures
+    // capturados (productos, configuración) entre tests.
+    mockApiGet.mockReset()
+    mockApiPost.mockReset()
   })
 
   describe('UI condicionality (Req 5.1, 5.2, 5.3)', () => {

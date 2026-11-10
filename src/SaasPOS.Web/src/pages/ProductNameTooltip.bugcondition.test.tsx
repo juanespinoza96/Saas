@@ -10,7 +10,7 @@
  * **Validates: Requirements 1.1, 1.2, 1.3, 2.1, 2.2, 2.3**
  */
 import { render, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fc from 'fast-check'
 import { PosNormalPage } from './PosNormalPage'
 import { PosBarPage } from './PosBarPage'
@@ -124,6 +124,11 @@ function setupMocksPosBar(productos: unknown[]) {
 describe('Bug Condition Exploration — Product Name Tooltip', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    // Soltar el closure de productos generado por fast-check en la última iteración.
+    mockApiGet.mockReset()
   })
 
   describe('PosNormalPage — span[title=producto.nombre] present', () => {
