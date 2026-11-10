@@ -15,7 +15,7 @@
  *
  * **Validates: Requirements 3.2, 3.4**
  */
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fc from 'fast-check'
@@ -29,16 +29,23 @@ vi.mock('../lib/api', () => ({
   },
 }))
 
+// Valor de useAuth con referencias ESTABLES (mismo objeto y mismas funciones en cada
+// render). Replica la memoización de hasRole del AuthContext real: PosNormalPage
+// depende de [hasRole] en su efecto de carga inicial, y una función nueva por render
+// provocaba recargas en bucle (y avisos de act). Se usan funciones planas (no vi.fn)
+// para que vi.clearAllMocks/restoreAllMocks no alteren su comportamiento.
+const authMock = vi.hoisted(() => ({
+  comercioNombre: 'Comercio Demo',
+  isAuthenticated: true,
+  claims: null,
+  login: () => {},
+  logout: () => {},
+  hasRole: () => true,
+}))
+
 // Mock del AuthContext para proveer comercioNombre sin necesidad del provider
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    comercioNombre: 'Comercio Demo',
-    isAuthenticated: true,
-    claims: null,
-    login: vi.fn(),
-    logout: vi.fn(),
-    hasRole: () => true,
-  }),
+  useAuth: () => authMock,
 }))
 
 import { api } from '../lib/api'
@@ -176,7 +183,10 @@ describe('Property 2: Preservation (c) — Disparo de impresión según `impresi
         mockApiPost.mockResolvedValue({} as never)
 
         const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-        render(<PosNormalPage />)
+        // El montaje se envuelve en act para que la carga inicial asíncrona se procese
+        await act(async () => {
+          render(<PosNormalPage />)
+        })
 
         const primer = productos[0]!
         await waitFor(() => {
@@ -192,7 +202,10 @@ describe('Property 2: Preservation (c) — Disparo de impresión según `impresi
         }, { timeout: 5000 })
 
         // El disparo automático usa setTimeout(..., 100) → avanzar timers
-        await vi.advanceTimersByTimeAsync(200)
+        // El avance se hace dentro de act para que React procese las actualizaciones
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(200)
+        })
 
         if (autoPrint) {
           expect(printSpy).toHaveBeenCalled()

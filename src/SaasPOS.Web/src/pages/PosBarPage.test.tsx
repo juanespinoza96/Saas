@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock del AuthContext para proveer `comercioNombre` y una sesión autenticada
@@ -100,7 +100,11 @@ describe('PosBarPage', () => {
 
     // Click a product
     const productButton = screen.getByLabelText(/Vender Empanada/i)
-    productButton.click()
+    // Se envuelve el clic en act asíncrono para que las actualizaciones de
+    // estado posteriores al POST (toast) se apliquen dentro de act
+    await act(async () => {
+      productButton.click()
+    })
 
     // Verify toast appears
     await waitFor(() => {
