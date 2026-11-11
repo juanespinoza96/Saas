@@ -590,9 +590,49 @@ app.UseCookiePolicy();
 app.UseCors("SaaS");
 
 // Req 23.6: IP blocking middleware (DDoS protection) — must be before rate limiter
-app.UseMiddleware<IpBlockingMiddleware>();
+// ============================================================================
+// MODIFICACIÓN TEMPORAL SOLO PARA PRUEBAS E2E (Playwright) - RESTAURAR AL TERMINAR
+//
+// Motivo: la suite E2E genera cientos de peticiones desde una sola IP (127.0.0.1) en
+// pocos minutos, lo que dispara el bloqueo por IP (500 req / 5 min -> 403 IP_BLOCKED)
+// y el rate limiter, y contamina los resultados con falsos fallos de login.
+// Para evitar ese conflicto durante las pruebas, ambos controles se pueden omitir
+// con variables de entorno al arrancar la API (solo en Development):
+//   Security__DisableIpBlocking=true
+//   Security__DisableRateLimiter=true
+//
+// Por defecto ambos valen false, por lo que el comportamiento normal NO cambia.
+// El bloqueo de cuenta (AccountLockoutService) y el límite de 3 intentos del
+// AuthController NO se ven afectados por este interruptor.
+//
+// RESTAURAR cuando terminen las pruebas: reiniciar la API SIN esas variables de
+// entorno. Si se quiere retirar el interruptor por completo, dejar solo:
+//   app.UseMiddleware<IpBlockingMiddleware>();
+//   app.UseRateLimiter();
+// Ver la sección "Interruptor temporal de rate limit para E2E" del README.md.
+// ============================================================================
+var omitirIpBlocking = app.Environment.IsDevelopment()
+    && app.Configuration.GetValue<bool>("Security:DisableIpBlocking");
+var omitirRateLimiter = app.Environment.IsDevelopment()
+    && app.Configuration.GetValue<bool>("Security:DisableRateLimiter");
 
-app.UseRateLimiter();
+if (omitirIpBlocking || omitirRateLimiter)
+{
+    // Aviso visible en consola para que nadie olvide que la protección está apagada.
+    app.Logger.LogWarning(
+        "ATENCIÓN: protecciones omitidas para pruebas E2E (IpBlocking={IpBlocking}, RateLimiter={RateLimiter}). Reiniciar la API sin las variables Security__Disable* al terminar.",
+        omitirIpBlocking, omitirRateLimiter);
+}
+
+if (!omitirIpBlocking)
+{
+    app.UseMiddleware<IpBlockingMiddleware>();
+}
+
+if (!omitirRateLimiter)
+{
+    app.UseRateLimiter();
+}
 
 app.UseAuthentication();
 
