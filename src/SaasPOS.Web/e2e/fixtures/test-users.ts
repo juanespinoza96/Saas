@@ -55,6 +55,33 @@ export const TEST_USERS = {
     plan: 'Empresarial',
   },
 
+  // Plan Básico — Moda Express S.A. (comercio 2). El plan Básico solo contempla dos
+  // usuarios: el Dueño y un Cajero; NO existe Gerente en este plan. Los specs que
+  // validan restricciones del plan Básico usan al Dueño (rol de mayor jerarquía).
+  duenoBasico: {
+    email: 'duena@modaexpress.com',
+    password: DEMO_PASSWORD,
+    role: 'Dueño',
+    comercio: 'Moda Express S.A.',
+    plan: 'Básico',
+  },
+  cajeroBasico: {
+    email: 'cajero@modaexpress.com',
+    password: DEMO_PASSWORD,
+    role: 'Cajero',
+    comercio: 'Moda Express S.A.',
+    plan: 'Básico',
+  },
+
+  // Plan Intermedio — Sabores del Valle Cía. Ltda. (comercio 3)
+  gerenteIntermedio: {
+    email: 'gerente@sabores.com',
+    password: DEMO_PASSWORD,
+    role: 'Gerente',
+    comercio: 'Sabores del Valle Cía. Ltda.',
+    plan: 'Intermedio',
+  },
+
   // SuperAdmin (usuario real de la base local)
   superadmin: {
     email: 'admin@saaspos.com',

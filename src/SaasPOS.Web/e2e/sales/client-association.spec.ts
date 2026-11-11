@@ -57,10 +57,10 @@ test.describe('Client Association - Hidden', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('MostrarBotonCliente FALSE hides client field', async ({ page }) => {
-    // Login as gerente basico (Básico plan, MostrarBotonCliente=FALSE)
+    // Login como duenoBasico (Dueño del plan Básico, que no tiene Gerente; MostrarBotonCliente=FALSE)
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login(TEST_USERS.gerenteBasico.email, TEST_USERS.gerenteBasico.password);
+    await loginPage.login(TEST_USERS.duenoBasico.email, TEST_USERS.duenoBasico.password);
     await loginPage.expectRedirectToDashboard();
 
     // Navigate to POS

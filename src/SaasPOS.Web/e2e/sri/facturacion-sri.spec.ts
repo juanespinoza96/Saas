@@ -7,10 +7,10 @@ test.describe('Facturación SRI - Disabled', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('UsaFacturacionSRI FALSE hides Factura Electronica option', async ({ page }) => {
-    // Login as gerenteBasico (Básico plan, UsaFacturacionSRI=FALSE)
+    // Login como duenoBasico (Dueño del plan Básico, que no tiene Gerente; UsaFacturacionSRI=FALSE)
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login(TEST_USERS.gerenteBasico.email, TEST_USERS.gerenteBasico.password);
+    await loginPage.login(TEST_USERS.duenoBasico.email, TEST_USERS.duenoBasico.password);
     await loginPage.expectRedirectToDashboard();
 
     await page.goto('/pos');

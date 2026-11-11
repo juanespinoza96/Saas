@@ -10,7 +10,7 @@ test.describe('Reportes - Plan Básico', () => {
   test('Plan Básico is blocked from Reportes section', async ({ page }) => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login(TEST_USERS.gerenteBasico.email, TEST_USERS.gerenteBasico.password);
+    await loginPage.login(TEST_USERS.duenoBasico.email, TEST_USERS.duenoBasico.password);
     await loginPage.expectRedirectToDashboard();
 
     const reportes = new ReportesPage(page);
