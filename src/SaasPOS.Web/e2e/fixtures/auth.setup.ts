@@ -11,10 +11,10 @@ const authStates = [
   { user: TEST_USERS.supervisor, file: '.auth/supervisor.json', baseURL: POS_URL },
   { user: TEST_USERS.bodeguero, file: '.auth/bodeguero.json', baseURL: POS_URL },
   { user: TEST_USERS.dueno, file: '.auth/dueno.json', baseURL: POS_URL },
-  { user: TEST_USERS.superadmin, file: '.auth/superadmin.json', baseURL: ADMIN_URL },
+  { user: TEST_USERS.superadmin, file: '.auth/superadmin.json', baseURL: ADMIN_URL, postLoginUrl: '**/localhost:3001/' },
 ] as const;
 
-for (const { user, file, baseURL } of authStates) {
+for (const { user, file, baseURL, ...resto } of authStates) {
   setup(`authenticate as ${user.role}`, async ({ page }) => {
     await page.goto(`${baseURL}/login`);
     // Los selectores coinciden con LoginPage.tsx del frontend POS:
@@ -22,7 +22,9 @@ for (const { user, file, baseURL } of authStates) {
     await page.getByLabel('Correo electrónico').fill(user.email);
     await page.getByLabel('Contraseña').fill(user.password);
     await page.getByRole('button', { name: /ingresar/i }).click();
-    await page.waitForURL('**/dashboard');
+    // El POS redirige a /dashboard; el panel Admin tiene su dashboard en la raíz (/).
+    const postLoginUrl = 'postLoginUrl' in resto ? resto.postLoginUrl : '**/dashboard';
+    await page.waitForURL(postLoginUrl);
     await page.context().storageState({ path: file });
   });
 }

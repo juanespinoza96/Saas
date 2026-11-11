@@ -18,7 +18,7 @@ async function globalSetup() {
 
   try {
     // Verificar conectividad + credenciales del SuperAdmin contra la base real.
-    const loginRes = await api.post('/api/admin/auth/login', {
+    const loginRes = await api.post('/api/tenants/auth/login', {
       data: {
         email: TEST_USERS.superadmin.email,
         password: TEST_USERS.superadmin.password,
