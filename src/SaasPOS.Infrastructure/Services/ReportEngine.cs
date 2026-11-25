@@ -14,7 +14,7 @@ namespace SaasPOS.Infrastructure.Services;
 /// </summary>
 public class ReportEngine : IReportEngine
 {
-    private const string PlanBasico = "BÃ¡sico";
+    private const string PlanBasico = "Básico";
     private const string PlanIntermedio = "Intermedio";
     private const string PlanEmpresarial = "Empresarial";
 
@@ -29,9 +29,9 @@ public class ReportEngine : IReportEngine
 
     public async Task<ReportResult> GenerarReporteAsync(ReportRequest request, int comercioId, string planNivel)
     {
-        // Plan BÃ¡sico: blocked (Req 13.1)
+        // Plan Básico: blocked (Req 13.1)
         if (planNivel == PlanBasico)
-            throw new ReportForbiddenException("El Plan BÃ¡sico no incluye acceso a reportes. Actualice su plan para usar esta funcionalidad.");
+            throw new ReportForbiddenException("El Plan Básico no incluye acceso a reportes. Actualice su plan para usar esta funcionalidad.");
 
         // Plan Intermedio: only predefined reports, no custom filters (Req 13.2)
         if (planNivel == PlanIntermedio)
@@ -39,7 +39,7 @@ public class ReportEngine : IReportEngine
             if (request.TipoReporte == TipoReporte.Personalizado)
                 throw new ReportForbiddenException("El Plan Intermedio no permite reportes personalizados. Actualice al Plan Empresarial.");
 
-            // No custom filters allowed â€” force current month only
+            // No custom filters allowed — force current month only
             var now = DateTime.UtcNow;
             var fechaDesde = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var fechaHasta = fechaDesde.AddMonths(1).AddTicks(-1);
@@ -94,7 +94,7 @@ public class ReportEngine : IReportEngine
         return Task.FromResult(bytes);
     }
 
-    // â”€â”€ Private report generators â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Private report generators ────────────────────────────────────────────
 
     private async Task<ReportResult> GenerarReportePredefinidoAsync(
         TipoReporte tipo, int comercioId, DateTime fechaDesde, DateTime fechaHasta)
@@ -104,13 +104,13 @@ public class ReportEngine : IReportEngine
             TipoReporte.TopProducto => await GenerarTopProductoAsync(comercioId, fechaDesde, fechaHasta),
             TipoReporte.TopCategoria => await GenerarTopCategoriaAsync(comercioId, fechaDesde, fechaHasta),
             TipoReporte.TopSucursal => await GenerarTopSucursalAsync(comercioId, fechaDesde, fechaHasta),
-            _ => throw new ReportForbiddenException($"Tipo de reporte '{tipo}' no es un reporte predefinido vÃ¡lido.")
+            _ => throw new ReportForbiddenException($"Tipo de reporte '{tipo}' no es un reporte predefinido válido.")
         };
     }
 
     private async Task<ReportResult> GenerarTopProductoAsync(int comercioId, DateTime fechaDesde, DateTime fechaHasta)
     {
-        // Top products by quantity sold â€” based on DetalleVentas joined with Ventas for ComercioId filter
+        // Top products by quantity sold — based on DetalleVentas joined with Ventas for ComercioId filter
         var datos = await _db.DetalleVentas
             .Where(d => d.Venta.ComercioId == comercioId
                      && d.Venta.FechaVenta >= fechaDesde
@@ -164,7 +164,7 @@ public class ReportEngine : IReportEngine
 
         return new ReportResult(
             TipoReporte: TipoReporte.TopCategoria,
-            Titulo: $"Top CategorÃ­as por Monto de Ventas ({fechaDesde:dd/MM/yyyy} - {fechaHasta:dd/MM/yyyy})",
+            Titulo: $"Top Categorías por Monto de Ventas ({fechaDesde:dd/MM/yyyy} - {fechaHasta:dd/MM/yyyy})",
             Datos: rows,
             GeneradoEn: DateTime.UtcNow);
     }
@@ -201,7 +201,7 @@ public class ReportEngine : IReportEngine
 
     private async Task<ReportResult> GenerarReportePersonalizadoAsync(int comercioId, ReportRequest request)
     {
-        // Custom report with filters â€” Plan Empresarial only
+        // Custom report with filters — Plan Empresarial only
         var fechaDesde = request.FechaDesde ?? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var fechaHasta = request.FechaHasta ?? DateTime.UtcNow;
 
@@ -250,13 +250,13 @@ public class ReportEngine : IReportEngine
             GeneradoEn: DateTime.UtcNow);
     }
 
-    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static string BuildFiltrosDescripcion(ReportRequest request)
     {
         var filtros = new List<string>();
         if (request.SucursalId.HasValue) filtros.Add($"Sucursal={request.SucursalId}");
-        if (request.CategoriaId.HasValue) filtros.Add($"CategorÃ­a={request.CategoriaId}");
+        if (request.CategoriaId.HasValue) filtros.Add($"Categoría={request.CategoriaId}");
         if (request.ProductoId.HasValue) filtros.Add($"Producto={request.ProductoId}");
         if (!string.IsNullOrWhiteSpace(request.MetodoPago)) filtros.Add($"MetodoPago={request.MetodoPago}");
 

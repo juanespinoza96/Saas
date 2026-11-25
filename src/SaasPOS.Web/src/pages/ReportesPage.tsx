@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button'
 import { ResponsiveTable } from '../components/ui/ResponsiveTable'
 import { ExportPdfDialog, type PdfExportOptions } from '../components/pos/ExportPdfDialog'
 
-type PlanNivel = 'BÃƒÆ’Ã‚Â¡sico' | 'Intermedio' | 'Empresarial'
+type PlanNivel = 'Básico' | 'Intermedio' | 'Empresarial'
 
 interface TopProducto {
   productoNombre: string
@@ -51,7 +51,7 @@ interface ProductoOption {
 
 /**
  * Reportes page.
- * - Plan BÃƒÆ’Ã‚Â¡sico: blocked, shows upgrade message (Req 13.1)
+ * - Plan Básico: blocked, shows upgrade message (Req 13.1)
  * - Plan Intermedio: 3 predefined reports for current month, no filters (Req 13.2)
  * - Plan Empresarial: predefined + custom reports with filters (Req 13.3)
  */
@@ -92,7 +92,7 @@ export function ReportesPage() {
         const config = await api.get<Configuracion>('/api/tenants/configuracion')
         setPlanNivel(config.planNivel)
       } catch {
-        setPlanNivel('BÃƒÆ’Ã‚Â¡sico')
+        setPlanNivel('Básico')
       } finally {
         setLoadingPlan(false)
       }
@@ -135,7 +135,7 @@ export function ReportesPage() {
   }, [])
 
   useEffect(() => {
-    if (planNivel && planNivel !== 'BÃƒÆ’Ã‚Â¡sico') {
+    if (planNivel && planNivel !== 'Básico') {
       fetchPredefinedReports()
     }
   }, [planNivel, fetchPredefinedReports])
@@ -255,8 +255,8 @@ export function ReportesPage() {
     )
   }
 
-  // Plan BÃƒÆ’Ã‚Â¡sico: block all reports (Req 13.1)
-  if (planNivel === 'BÃƒÆ’Ã‚Â¡sico') {
+  // Plan Básico: block all reports (Req 13.1)
+  if (planNivel === 'Básico') {
     return (
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-dark-text mb-4">
@@ -277,7 +277,7 @@ export function ReportesPage() {
             />
           </svg>
           <p className="text-gray-700 dark:text-gray-300 text-lg">
-            Los reportes no estÃƒÆ’Ã‚Â¡n disponibles para su plan actual. Actualice a Plan
+            Los reportes no están disponibles para su plan actual. Actualice a Plan
             Intermedio o Empresarial.
           </p>
         </div>
@@ -341,10 +341,10 @@ export function ReportesPage() {
               </div>
             </div>
 
-            {/* Top CategorÃƒÆ’Ã‚Â­a */}
+            {/* Top Categoría */}
             <div className="bg-white dark:bg-dark-surface rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-4">
-                Top CategorÃƒÆ’Ã‚Â­as
+                Top Categorías
               </h2>
               {topCategorias.length === 0 ? (
                 <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -474,7 +474,7 @@ export function ReportesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    CategorÃƒÆ’Ã‚Â­a
+                    Categoría
                   </label>
                   <select
                     value={categoriaId}
