@@ -53,8 +53,11 @@ public class ReportAccessTests : IntegrationTestBase
         // Act: Try to access a predefined report
         var response = await Client.GetAsync("/api/tenants/reportes/top-producto");
 
-        // Assert
+        // Assert: 403 con el mensaje específico del Plan Básico (no el genérico de plan no determinado)
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("El Plan Básico no incluye acceso a reportes", body);
+        Assert.DoesNotContain("No se pudo determinar el nivel de plan", body);
     }
 
     [DockerAvailableFact]
