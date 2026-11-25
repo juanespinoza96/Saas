@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SaasPOS.Application.Interfaces;
-using SaasPOS.Domain;
 using SaasPOS.Domain.Entities;
 using SaasPOS.Infrastructure.Data;
 
@@ -10,8 +9,9 @@ namespace SaasPOS.Infrastructure.Services;
 /// <summary>
 /// Validates subscription plan limits. Uses IgnoreQueryFilters for system-level validation.
 /// Fail-safe policy (Req 1.7): returns FALSE on any error or indeterminate state.
-/// Restricciones adicionales para trials (Req 2.1-2.4): roles limitados a Gerente/Cajero,
-/// reportes y SRI bloqueados cuando Estado == "Trial".
+/// Restricción adicional para trials (Req 2.4): facturación electrónica SRI bloqueada cuando Estado == "Trial".
+/// El trial se crea sobre el Plan Básico: los roles permitidos se validan por plan en
+/// RoleValidator/RolePlanMapping y el bloqueo de reportes se aplica en ReportEngine.
 /// </summary>
 public class SubscriptionGuard : ISubscriptionGuard
 {
@@ -19,10 +19,6 @@ public class SubscriptionGuard : ISubscriptionGuard
     private const string PlanIntermedio = "Intermedio";
     private const string PlanEmpresarial = "Empresarial";
     private const string EstadoTrial = "Trial";
-
-    /// <summary>Roles permitidos durante el período de trial (Req 2.3).</summary>
-    private static readonly HashSet<string> RolesPermitidosEnTrial =
-        new(StringComparer.OrdinalIgnoreCase) { "Gerente", "Cajero" };
 
     private readonly AppDbContext _dbContext;
     private readonly ILogger<SubscriptionGuard> _logger;
@@ -173,65 +169,6 @@ public class SubscriptionGuard : ISubscriptionGuard
         {
             _logger.LogError(ex, "Error checking CanAddAtributoCategoria for ComercioId={ComercioId}, CategoriaId={CategoriaId}. Fail-safe: denying.",
                 comercioId, categoriaId);
-            return false;
-        }
-    }
-
-    public async Task<bool> CanUseRoleAsync(int comercioId, string role)
-    {
-        try
-        {
-            var comercio = await _dbContext.Comercios
-                .IgnoreQueryFilters()
-                .Include(c => c.Plan)
-                .FirstOrDefaultAsync(c => c.Id == comercioId);
-
-            if (comercio?.Plan is null)
-                return false; // Fail-safe: no se puede determinar el plan
-
-            // Restricción de trial (Req 2.3): solo Gerente y Cajero permitidos
-            if (await EstaEnTrialAsync(comercioId))
-            {
-                return RolesPermitidosEnTrial.Contains(role);
-            }
-
-            var planName = comercio.Plan.Nombre;
-
-            // Delegar la validación de roles por plan a la fuente de verdad estática
-            return RolePlanMapping.EsRolPermitido(planName, role);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error checking CanUseRole for ComercioId={ComercioId}, Role={Role}. Fail-safe: denying.",
-                comercioId, role);
-            return false;
-        }
-    }
-
-    public async Task<bool> CanGenerateReportAsync(int comercioId)
-    {
-        try
-        {
-            // Restricción de trial (Req 2.2): reportes bloqueados durante trial
-            if (await EstaEnTrialAsync(comercioId))
-                return false;
-
-            var comercio = await _dbContext.Comercios
-                .IgnoreQueryFilters()
-                .Include(c => c.Plan)
-                .FirstOrDefaultAsync(c => c.Id == comercioId);
-
-            if (comercio?.Plan is null)
-                return false; // Fail-safe
-
-            var planName = comercio.Plan.Nombre;
-
-            // Plan Básico: blocked; Intermedio & Empresarial: allowed
-            return planName != PlanBasico;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error checking CanGenerateReport for ComercioId={ComercioId}. Fail-safe: denying.", comercioId);
             return false;
         }
     }

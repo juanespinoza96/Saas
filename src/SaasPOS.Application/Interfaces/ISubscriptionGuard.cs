@@ -30,23 +30,6 @@ public interface ISubscriptionGuard
     Task<bool> CanAddAtributoCategoriaAsync(int comercioId, int categoriaId);
 
     /// <summary>
-    /// Checks if a role is allowed for the comercio's current plan.
-    /// Delegates to RolePlanMapping as the single source of truth:
-    /// Plan Básico: Dueño, Cajero.
-    /// Plan Intermedio: Dueño, Gerente, Cajero, Bodeguero.
-    /// Plan Empresarial: Dueño, Gerente, Supervisor, Cajero, Bodeguero.
-    /// SuperAdmin is excluded (platform role, not a commerce role).
-    /// </summary>
-    Task<bool> CanUseRoleAsync(int comercioId, string role);
-
-    /// <summary>
-    /// Checks if the comercio can generate reports.
-    /// Plan Básico: blocked.
-    /// Plan Intermedio &amp; Empresarial: allowed.
-    /// </summary>
-    Task<bool> CanGenerateReportAsync(int comercioId);
-
-    /// <summary>
     /// Checks if the comercio can emit electronic invoices (factura electrónica).
     /// Requires UsaFacturacionSRI = true AND Plan != Básico.
     /// </summary>

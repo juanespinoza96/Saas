@@ -13,27 +13,17 @@ namespace SaasPOS.Tests.Services;
 // Feature: prueba-gratuita, Property 4: Restricciones de plan durante trial
 /// <summary>
 /// Property-based tests para restricciones del plan durante período de trial.
-/// **Validates: Requirements 2.1, 2.2, 2.3, 2.4**
+/// **Validates: Requirements 2.1, 2.4**
 ///
 /// Property 4: Restricciones de plan durante trial
 /// "For any comercio con Suscripción en Estado 'Trial': (a) los límites del Plan Básico aplican
-/// (max 2 usuarios, 1 sucursal, 2 atributos por categoría), (b) reportes están bloqueados,
-/// (c) facturación electrónica SRI está bloqueada, y (d) los únicos roles permitidos son
-/// Gerente y Cajero."
+/// (max 2 usuarios, 1 sucursal, 2 atributos por categoría), (b) facturación electrónica SRI está bloqueada.
+/// Los roles permitidos y el bloqueo de reportes se validan por plan (Básico) en RolePlanMapping
+/// y ReportEngine; no se prueban en esta clase."
 /// </summary>
 public class TrialPlanRestrictionPropertyTests
 {
     private static readonly Mock<ILogger<SubscriptionGuard>> LoggerMock = new();
-
-    /// <summary>
-    /// Roles que deben ser PERMITIDOS durante el trial.
-    /// </summary>
-    private static readonly string[] RolesPermitidos = { "Gerente", "Cajero" };
-
-    /// <summary>
-    /// Roles que deben ser DENEGADOS durante el trial.
-    /// </summary>
-    private static readonly string[] RolesDenegados = { "Dueño", "Supervisor", "Bodeguero" };
 
     /// <summary>
     /// Crea un contexto InMemory con ITenantContext configurado como SuperAdmin
@@ -239,40 +229,10 @@ public class TrialPlanRestrictionPropertyTests
 
     #endregion
 
-    #region Property 4b: Reportes bloqueados durante Trial
+    #region Property 4b: Facturación electrónica SRI bloqueada durante Trial
 
     /// <summary>
     /// Property 4b: Para cualquier comercio con suscripción en estado "Trial",
-    /// CanGenerateReportAsync siempre retorna false independientemente de la configuración.
-    /// </summary>
-    [Property(MaxTest = 100)]
-    public Property Trial_ReportesBloqueados_SiempreRetornaFalse()
-    {
-        // Generador: booleano para UsaFacturacionSRI (demostrar que es independiente)
-        var boolGen = Arb.Generate<bool>();
-
-        return Prop.ForAll(boolGen.ToArbitrary(), (bool usaSri) =>
-        {
-            var (db, guard) = CreateContext();
-            using (db)
-            {
-                SeedComercioEnTrial(db, usaFacturacionSRI: usaSri);
-
-                var result = guard.CanGenerateReportAsync(comercioId: 1).GetAwaiter().GetResult();
-
-                // Reportes SIEMPRE bloqueados durante trial
-                return (!result).ToProperty()
-                    .Label($"Reportes deberían estar bloqueados durante trial (usaSri={usaSri})");
-            }
-        });
-    }
-
-    #endregion
-
-    #region Property 4c: Facturación electrónica SRI bloqueada durante Trial
-
-    /// <summary>
-    /// Property 4c: Para cualquier comercio con suscripción en estado "Trial",
     /// CanEmitirFacturaElectronicaAsync siempre retorna false, independientemente
     /// de si UsaFacturacionSRI está habilitado.
     /// </summary>
@@ -300,96 +260,11 @@ public class TrialPlanRestrictionPropertyTests
 
     #endregion
 
-    #region Property 4d: Solo roles Gerente y Cajero permitidos durante Trial
-
-    /// <summary>
-    /// Property 4d.1: Para cualquier comercio en trial, los roles "Gerente" y "Cajero"
-    /// siempre son permitidos por CanUseRoleAsync.
-    /// </summary>
-    [Property(MaxTest = 100)]
-    public Property Trial_RolesPermitidos_GerenteYCajero_RetornaTrue()
-    {
-        // Generador: selecciona uno de los roles permitidos
-        var rolGen = Gen.Elements(RolesPermitidos);
-
-        return Prop.ForAll(rolGen.ToArbitrary(), (string rol) =>
-        {
-            var (db, guard) = CreateContext();
-            using (db)
-            {
-                SeedComercioEnTrial(db);
-
-                var result = guard.CanUseRoleAsync(comercioId: 1, role: rol).GetAwaiter().GetResult();
-
-                return result.ToProperty()
-                    .Label($"Rol '{rol}' debería estar permitido durante trial pero fue denegado");
-            }
-        });
-    }
-
-    /// <summary>
-    /// Property 4d.2: Para cualquier comercio en trial, los roles "Dueño", "Supervisor"
-    /// y "Bodeguero" siempre son denegados por CanUseRoleAsync.
-    /// </summary>
-    [Property(MaxTest = 100)]
-    public Property Trial_RolesDenegados_DuenoSupervisorBodeguero_RetornaFalse()
-    {
-        // Generador: selecciona uno de los roles que deben ser denegados
-        var rolGen = Gen.Elements(RolesDenegados);
-
-        return Prop.ForAll(rolGen.ToArbitrary(), (string rol) =>
-        {
-            var (db, guard) = CreateContext();
-            using (db)
-            {
-                SeedComercioEnTrial(db);
-
-                var result = guard.CanUseRoleAsync(comercioId: 1, role: rol).GetAwaiter().GetResult();
-
-                return (!result).ToProperty()
-                    .Label($"Rol '{rol}' debería estar denegado durante trial pero fue permitido");
-            }
-        });
-    }
-
-    /// <summary>
-    /// Property 4d.3: Para cualquier string aleatorio que NO sea "Gerente" ni "Cajero",
-    /// CanUseRoleAsync retorna false durante trial.
-    /// </summary>
-    [Property(MaxTest = 100)]
-    public Property Trial_RolAleatorio_NoPermitido_SiNoEsGerenteOCajero()
-    {
-        // Generador: strings no vacíos aleatorios
-        var rolGen = Arb.Generate<NonEmptyString>().Select(s => s.Get);
-
-        return Prop.ForAll(rolGen.ToArbitrary(), (string rol) =>
-        {
-            // Solo evaluar roles que NO sean Gerente ni Cajero
-            if (string.Equals(rol, "Gerente", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(rol, "Cajero", StringComparison.OrdinalIgnoreCase))
-                return true.ToProperty(); // Se descarta (trivially true)
-
-            var (db, guard) = CreateContext();
-            using (db)
-            {
-                SeedComercioEnTrial(db);
-
-                var result = guard.CanUseRoleAsync(comercioId: 1, role: rol).GetAwaiter().GetResult();
-
-                return (!result).ToProperty()
-                    .Label($"Rol arbitrario '{rol}' debería estar denegado durante trial pero fue permitido");
-            }
-        });
-    }
-
-    #endregion
-
     #region Property 4 combinada: Todas las restricciones se aplican simultáneamente
 
     /// <summary>
-    /// Property 4 combinada: Para cualquier comercio en estado trial, las 4 restricciones
-    /// se aplican simultáneamente: límites de Plan Básico + reportes bloqueados + SRI bloqueado
-    /// + solo roles Gerente/Cajero.
+    /// Property 4 combinada: Para cualquier comercio en estado trial, las restricciones
+    /// se aplican simultáneamente: límites de Plan Básico + SRI bloqueado.
     /// </summary>
     [Property(MaxTest = 100)]
     public Property Trial_TodasLasRestricciones_SeAplicanSimultaneamente()
@@ -419,25 +294,16 @@ public class TrialPlanRestrictionPropertyTests
                 var canAddUser = guard.CanAddUserAsync(comercioId: 1).GetAwaiter().GetResult();
                 var canAddSucursal = guard.CanAddSucursalAsync(comercioId: 1).GetAwaiter().GetResult();
                 var canAddAttr = guard.CanAddAtributoCategoriaAsync(comercioId: 1, categoriaId: 1).GetAwaiter().GetResult();
-                var canReport = guard.CanGenerateReportAsync(comercioId: 1).GetAwaiter().GetResult();
                 var canSri = guard.CanEmitirFacturaElectronicaAsync(comercioId: 1).GetAwaiter().GetResult();
-                var canGerente = guard.CanUseRoleAsync(comercioId: 1, role: "Gerente").GetAwaiter().GetResult();
-                var canCajero = guard.CanUseRoleAsync(comercioId: 1, role: "Cajero").GetAwaiter().GetResult();
-                var canDueno = guard.CanUseRoleAsync(comercioId: 1, role: "Dueño").GetAwaiter().GetResult();
-                var canSupervisor = guard.CanUseRoleAsync(comercioId: 1, role: "Supervisor").GetAwaiter().GetResult();
 
                 // Todas las restricciones simultáneas:
                 // (a) Límites alcanzados → no se puede agregar más
                 var limitesCumplidos = !canAddUser && !canAddSucursal && !canAddAttr;
-                // (b) Reportes bloqueados
-                var reportesBloqueados = !canReport;
-                // (c) SRI bloqueado
+                // (b) SRI bloqueado
                 var sriBloqueado = !canSri;
-                // (d) Solo Gerente y Cajero permitidos
-                var rolesCorrectos = canGerente && canCajero && !canDueno && !canSupervisor;
 
-                return (limitesCumplidos && reportesBloqueados && sriBloqueado && rolesCorrectos).ToProperty()
-                    .Label($"limites={limitesCumplidos}, reportes={reportesBloqueados}, sri={sriBloqueado}, roles={rolesCorrectos}");
+                return (limitesCumplidos && sriBloqueado).ToProperty()
+                    .Label($"limites={limitesCumplidos}, sri={sriBloqueado}");
             }
         });
     }

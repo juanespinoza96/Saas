@@ -17,16 +17,13 @@ namespace SaasPOS.Api.Controllers.Tenants;
 public class ComprobantesController : ControllerBase
 {
     private readonly IComprobantesConfigService _comprobantesConfigService;
-    private readonly ISubscriptionGuard _subscriptionGuard;
     private readonly ITenantContext _tenantContext;
 
     public ComprobantesController(
         IComprobantesConfigService comprobantesConfigService,
-        ISubscriptionGuard subscriptionGuard,
         ITenantContext tenantContext)
     {
         _comprobantesConfigService = comprobantesConfigService;
-        _subscriptionGuard = subscriptionGuard;
         _tenantContext = tenantContext;
     }
 
