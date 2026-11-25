@@ -39,7 +39,10 @@ export function LoginPage() {
       }
 
       const data = await response.json() as { token: string }
-      login(data.token)
+      // login() devuelve false cuando el token no es de SuperAdmin: se explica el motivo
+      if (!login(data.token)) {
+        setError('Esta cuenta no tiene acceso al panel de administración')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión')
     } finally {

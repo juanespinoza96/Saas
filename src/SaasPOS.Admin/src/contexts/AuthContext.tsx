@@ -9,7 +9,8 @@ import { ModalConfirmacion } from '../components/sesion/ModalConfirmacion'
 import { BloqueoTotal } from '../components/sesion/BloqueoTotal'
 
 interface AuthContextValue extends AuthState {
-  login: (token: string) => void
+  /** Devuelve false si el token se rechaza (rol distinto de SuperAdmin o token inválido). */
+  login: (token: string) => boolean
   logout: () => void
 }
 
@@ -50,11 +51,11 @@ function getInitialState(): AuthState {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(getInitialState)
 
-  const login = useCallback((token: string) => {
+  const login = useCallback((token: string): boolean => {
     const claims = decodeToken(token)
     if (!claims) {
       // Reject non-SuperAdmin tokens
-      return
+      return false
     }
     try {
       localStorage.setItem(AUTH_TOKEN_KEY, token)
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // localStorage not available
     }
     setState({ token, claims, isAuthenticated: true })
+    return true
   }, [])
 
   const logout = useCallback(() => {
