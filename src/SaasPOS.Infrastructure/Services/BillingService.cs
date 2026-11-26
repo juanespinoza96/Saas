@@ -152,9 +152,8 @@ public class BillingService : IBillingService
             await _notificationService.CrearNotificacionPagoProximoAsync(
                 suscripcion.ComercioId, suscripcion.MontoCuota, suscripcion.FechaProximoCorte.ToDateTime(TimeOnly.MinValue));
             // Enqueue email (Req 19.11)
-            var gerente = await GetGerenteEmail(suscripcion.ComercioId);
-            if (gerente != null)
-                await _emailService.EnqueueAsync(suscripcion.ComercioId, gerente,
+            foreach (var destinatario in await GetDestinatariosCobroAsync(suscripcion.ComercioId))
+                await _emailService.EnqueueAsync(suscripcion.ComercioId, destinatario,
                     "Suscripción por vencer",
                     $"Su suscripción vence el {suscripcion.FechaProximoCorte}. Monto: ${suscripcion.MontoCuota}");
         }
@@ -175,9 +174,8 @@ public class BillingService : IBillingService
         {
             suscripcion.Estado = "En mora";
             await _notificationService.CrearNotificacionMoraAsync(suscripcion.ComercioId);
-            var gerente = await GetGerenteEmail(suscripcion.ComercioId);
-            if (gerente != null)
-                await _emailService.EnqueueAsync(suscripcion.ComercioId, gerente,
+            foreach (var destinatario in await GetDestinatariosCobroAsync(suscripcion.ComercioId))
+                await _emailService.EnqueueAsync(suscripcion.ComercioId, destinatario,
                     "Suscripción en mora",
                     $"Su suscripción ha entrado en mora. Realice el pago de ${suscripcion.MontoCuota} para mantener el acceso.");
 
@@ -229,13 +227,27 @@ public class BillingService : IBillingService
             porVencer.Count, enMora.Count, suspender.Count);
     }
 
-    private async Task<string?> GetGerenteEmail(int comercioId)
+    /// <summary>
+    /// Destinatarios de los correos de cobro: el Dueño activo y, si existe, también el Gerente activo.
+    /// Sin duplicados (comparación sin distinguir mayúsculas) y sin fallar si falta alguno.
+    /// </summary>
+    private async Task<List<string>> GetDestinatariosCobroAsync(int comercioId)
     {
-        return await _db.Usuarios
+        var destinatarios = new List<string>();
+        var dueno = await GetDuenoEmail(comercioId);
+        if (!string.IsNullOrWhiteSpace(dueno))
+            destinatarios.Add(dueno);
+
+        var gerente = await _db.Usuarios
             .IgnoreQueryFilters()
             .Where(u => u.ComercioId == comercioId && u.Rol == "Gerente" && u.Activo)
             .Select(u => u.Email)
             .FirstOrDefaultAsync();
+        if (!string.IsNullOrWhiteSpace(gerente)
+            && !destinatarios.Contains(gerente, StringComparer.OrdinalIgnoreCase))
+            destinatarios.Add(gerente);
+
+        return destinatarios;
     }
 
     /// <summary>
