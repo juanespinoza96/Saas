@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using SaasPOS.Application.DTOs;
@@ -7,7 +7,7 @@ using SaasPOS.Domain.Entities;
 namespace SaasPOS.Tests.Integration.Stock;
 
 /// <summary>
-/// Integration tests verifying that ConfiguracionComercio.PermiteVentaEnNegativo
+/// Integration tests verifying that ConfiguracionSucursal.PermiteVentaEnNegativo
 /// correctly blocks or allows sales when stock would go negative.
 /// </summary>
 [Collection("Postgres")]
@@ -116,10 +116,107 @@ public class NegativeStockPolicyTests : IntegrationTestBase
         Assert.Equal(-5m, stock.CantidadFisica);
     }
 
+    [DockerAvailableFact]
+    public async Task PermiteVentaEnNegativo_ConfigComercioTrue_SucursalFalse_BlocksVentaDirecta()
+    {
+        // El valor de ConfiguracionesComercio se ignora: manda la sucursal (false)
+        var (comercioId, sucursalId, usuarioId, productoId) =
+            await SeedVentaDirectaCommerce(initialStock: 5m, permiteNegativo: false, permiteNegativoComercio: true);
+        AuthenticateAs(usuarioId, comercioId, "Cajero");
+
+        var request = new CrearVentaRequest(
+            SucursalId: sucursalId,
+            TipoComprobante: "Ticket Interno",
+            ClienteId: null,
+            Lineas: new List<LineaVentaRequest> { new(ProductoId: productoId, Cantidad: 10) });
+
+        var response = await Client.PostAsJsonAsync("/api/tenants/ventas", request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var cuerpo = await response.Content.ReadAsStringAsync();
+        Assert.Contains("STOCK_ERROR", cuerpo);
+        Assert.Contains("Stock insuficiente", cuerpo);
+
+        await using var verifyDb = CreateDbContext();
+        var stock = await verifyDb.StockSucursal
+            .IgnoreQueryFilters()
+            .FirstAsync(s => s.ProductoId == productoId && s.SucursalId == sucursalId);
+        Assert.Equal(5m, stock.CantidadFisica);
+    }
+
+    [DockerAvailableFact]
+    public async Task PermiteVentaEnNegativo_ConfigComercioFalse_SucursalTrue_AllowsVentaDirecta()
+    {
+        // Manda la sucursal (true) aunque ConfiguracionesComercio tenga false
+        var (comercioId, sucursalId, usuarioId, productoId) =
+            await SeedVentaDirectaCommerce(initialStock: 5m, permiteNegativo: true, permiteNegativoComercio: false);
+        AuthenticateAs(usuarioId, comercioId, "Cajero");
+
+        var request = new CrearVentaRequest(
+            SucursalId: sucursalId,
+            TipoComprobante: "Ticket Interno",
+            ClienteId: null,
+            Lineas: new List<LineaVentaRequest> { new(ProductoId: productoId, Cantidad: 10) });
+
+        var response = await Client.PostAsJsonAsync("/api/tenants/ventas", request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [DockerAvailableFact]
+    public async Task PermiteVentaEnNegativo_SucursalTrue_AllowsEnsamblado_WithNegativeIngredientStock()
+    {
+        // Ingrediente=2, receta 0.5, vender 5 => necesita 2.5; la sucursal permite negativo
+        var seed = await SeedEnsambladoCommerce(
+            ingredientStock: 2m, permiteNegativo: true, permiteNegativoComercio: false);
+        AuthenticateAs(seed.UsuarioId, seed.ComercioId, "Cajero");
+
+        var request = new CrearVentaRequest(
+            SucursalId: seed.SucursalId,
+            TipoComprobante: "Ticket Interno",
+            ClienteId: null,
+            Lineas: new List<LineaVentaRequest> { new(ProductoId: seed.EnsambladoId, Cantidad: 5) });
+
+        var response = await Client.PostAsJsonAsync("/api/tenants/ventas", request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        await using var verifyDb = CreateDbContext();
+        var stock = await verifyDb.StockSucursal
+            .IgnoreQueryFilters()
+            .FirstAsync(s => s.ProductoId == seed.IngredientId && s.SucursalId == seed.SucursalId);
+        Assert.Equal(-0.5m, stock.CantidadFisica);
+    }
+
+    [DockerAvailableFact]
+    public async Task PermiteVentaEnNegativo_ConfigComercioTrue_SucursalFalse_BlocksEnsamblado()
+    {
+        var seed = await SeedEnsambladoCommerce(
+            ingredientStock: 2m, permiteNegativo: false, permiteNegativoComercio: true);
+        AuthenticateAs(seed.UsuarioId, seed.ComercioId, "Cajero");
+
+        var request = new CrearVentaRequest(
+            SucursalId: seed.SucursalId,
+            TipoComprobante: "Ticket Interno",
+            ClienteId: null,
+            Lineas: new List<LineaVentaRequest> { new(ProductoId: seed.EnsambladoId, Cantidad: 5) });
+
+        var response = await Client.PostAsJsonAsync("/api/tenants/ventas", request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("Stock insuficiente", await response.Content.ReadAsStringAsync());
+
+        await using var verifyDb = CreateDbContext();
+        var stock = await verifyDb.StockSucursal
+            .IgnoreQueryFilters()
+            .FirstAsync(s => s.ProductoId == seed.IngredientId && s.SucursalId == seed.SucursalId);
+        Assert.Equal(2m, stock.CantidadFisica);
+    }
+
     #region Seed Helpers
 
     private async Task<(int comercioId, int sucursalId, int usuarioId, int productoId)>
-        SeedVentaDirectaCommerce(decimal initialStock, bool permiteNegativo)
+        SeedVentaDirectaCommerce(decimal initialStock, bool permiteNegativo, bool permiteNegativoComercio = false)
     {
         await using var context = CreateDbContext();
 
@@ -150,7 +247,8 @@ public class NegativeStockPolicyTests : IntegrationTestBase
             ComercioId = comercio.Id,
             EsBarEscolar = false,
             MostrarBotonCliente = false,
-            PermiteVentaEnNegativo = permiteNegativo,
+            // Valor sin uso: se siembra independiente para comprobar que el servicio lo ignora
+            PermiteVentaEnNegativo = permiteNegativoComercio,
             ImpresionAutomaticaTicket = false
         };
         context.ConfiguracionesComercio.Add(config);
@@ -174,6 +272,14 @@ public class NegativeStockPolicyTests : IntegrationTestBase
             SerieFacturacion = "001-001"
         };
         context.Sucursales.Add(sucursal);
+        await context.SaveChangesAsync();
+
+        // El interruptor que gobierna el stock es el de la sucursal
+        context.ConfiguracionesSucursal.Add(new ConfiguracionSucursal
+        {
+            SucursalId = sucursal.Id,
+            PermiteVentaEnNegativo = permiteNegativo
+        });
         await context.SaveChangesAsync();
 
         var usuario = new Usuario
@@ -216,7 +322,7 @@ public class NegativeStockPolicyTests : IntegrationTestBase
     }
 
     private async Task<EnsambladoNegSeedResult> SeedEnsambladoCommerce(
-        decimal ingredientStock, bool permiteNegativo)
+        decimal ingredientStock, bool permiteNegativo, bool permiteNegativoComercio = false)
     {
         await using var context = CreateDbContext();
 
@@ -247,7 +353,8 @@ public class NegativeStockPolicyTests : IntegrationTestBase
             ComercioId = comercio.Id,
             EsBarEscolar = false,
             MostrarBotonCliente = false,
-            PermiteVentaEnNegativo = permiteNegativo,
+            // Valor sin uso: se siembra independiente para comprobar que el servicio lo ignora
+            PermiteVentaEnNegativo = permiteNegativoComercio,
             ImpresionAutomaticaTicket = false
         };
         context.ConfiguracionesComercio.Add(config);
@@ -271,6 +378,14 @@ public class NegativeStockPolicyTests : IntegrationTestBase
             SerieFacturacion = "001-001"
         };
         context.Sucursales.Add(sucursal);
+        await context.SaveChangesAsync();
+
+        // El interruptor que gobierna el stock es el de la sucursal
+        context.ConfiguracionesSucursal.Add(new ConfiguracionSucursal
+        {
+            SucursalId = sucursal.Id,
+            PermiteVentaEnNegativo = permiteNegativo
+        });
         await context.SaveChangesAsync();
 
         var usuario = new Usuario

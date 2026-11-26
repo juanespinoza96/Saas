@@ -1,4 +1,4 @@
-using FsCheck;
+﻿using FsCheck;
 using FsCheck.Xunit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -31,7 +31,7 @@ public class Property17_StockLowNotificationTests
         // Seed base entities
         db.Planes.Add(new Plan { Id = 1, Nombre = "Básico", Precio = 10m, LimiteUsuarios = 5, LimiteAtributos = 2 });
         db.Comercios.Add(new Comercio { Id = 1, Ruc = "123", RazonSocial = "Test", PlanId = 1, FechaRegistro = DateTime.UtcNow });
-        db.ConfiguracionesComercio.Add(new ConfiguracionComercio { ComercioId = 1, PermiteVentaEnNegativo = true });
+        db.ConfiguracionesSucursal.Add(new ConfiguracionSucursal { SucursalId = 1, PermiteVentaEnNegativo = true });
         db.Sucursales.Add(new Sucursal { Id = 1, ComercioId = 1, Nombre = "Sucursal 1" });
         db.SaveChanges();
 

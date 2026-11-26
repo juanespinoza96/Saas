@@ -1,4 +1,4 @@
-using FsCheck;
+﻿using FsCheck;
 using FsCheck.Xunit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -53,9 +53,9 @@ public class Property9_EnsambladoBOMStockDecrementTests
             FechaRegistro = DateTime.UtcNow
         });
 
-        dbContext.ConfiguracionesComercio.Add(new ConfiguracionComercio
+        dbContext.ConfiguracionesSucursal.Add(new ConfiguracionSucursal
         {
-            ComercioId = ComercioId,
+            SucursalId = SucursalId,
             PermiteVentaEnNegativo = true,
             EsBarEscolar = false,
             MostrarBotonCliente = false,

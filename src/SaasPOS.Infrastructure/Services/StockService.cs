@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SaasPOS.Application.Interfaces;
 using SaasPOS.Domain.Entities;
@@ -25,14 +25,23 @@ public class StockService : IStockService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Lee el interruptor "vender en negativo" de la sucursal (ConfiguracionesSucursal), que es el que
+    /// edita el usuario. ConfiguracionesComercio.PermiteVentaEnNegativo quedó sin uso y se ignora.
+    /// Si la sucursal no tiene fila de configuración, se trata como false.
+    /// </summary>
+    private async Task<bool> ObtenerPermiteVentaEnNegativoAsync(int sucursalId)
+    {
+        return await _dbContext.ConfiguracionesSucursal
+            .IgnoreQueryFilters()
+            .Where(c => c.SucursalId == sucursalId)
+            .Select(c => c.PermiteVentaEnNegativo)
+            .FirstOrDefaultAsync();
+    }
     public async Task<StockResult> DecrementarStockVentaDirectaAsync(
         int productoId, int sucursalId, decimal cantidad, int comercioId)
     {
-        var config = await _dbContext.ConfiguracionesComercio
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.ComercioId == comercioId);
-
-        var permiteNegativo = config?.PermiteVentaEnNegativo ?? false;
+        var permiteNegativo = await ObtenerPermiteVentaEnNegativoAsync(sucursalId);
 
         var stock = await GetOrCreateStockAsync(productoId, sucursalId);
 
@@ -66,11 +75,7 @@ public class StockService : IStockService
             return new StockResult(false, "No recipe defined");
         }
 
-        var config = await _dbContext.ConfiguracionesComercio
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.ComercioId == comercioId);
-
-        var permiteNegativo = config?.PermiteVentaEnNegativo ?? false;
+        var permiteNegativo = await ObtenerPermiteVentaEnNegativoAsync(sucursalId);
 
         // Pre-validate all ingredients have sufficient stock
         if (!permiteNegativo)
