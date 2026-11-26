@@ -319,6 +319,29 @@ public class ComerciosController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/admin/comercios/{id}/usuarios — Usuarios del comercio (sin hash de contraseña)
+    /// </summary>
+    [HttpGet("{id:int}/usuarios")]
+    public async Task<IActionResult> GetUsuarios(int id)
+    {
+        var existe = await _db.Comercios
+            .IgnoreQueryFilters()
+            .AnyAsync(c => c.Id == id);
+
+        if (!existe)
+            return NotFound(new { error = "Comercio no encontrado.", code = "COMERCIO_NOT_FOUND" });
+
+        var usuarios = await _db.Usuarios
+            .IgnoreQueryFilters()
+            .Where(u => u.ComercioId == id)
+            .OrderBy(u => u.Nombre)
+            .Select(u => new UsuarioComercioDto(u.Id, u.Nombre, u.Email, u.Rol, u.Activo))
+            .ToListAsync();
+
+        return Ok(usuarios);
+    }
+
+    /// <summary>
     /// GET /api/admin/comercios/{id}/pagos — Historial de pagos
     /// </summary>
     [HttpGet("{id:int}/pagos")]
