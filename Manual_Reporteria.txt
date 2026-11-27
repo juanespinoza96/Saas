@@ -72,8 +72,8 @@ garantizando que un comercio nunca vea información de otro comercio.
 Solo los siguientes roles pueden acceder a la pantalla de reportes:
 
   • Gerente ✓
-  • Dueño ✓ (solo Plan Empresarial)
-  • Supervisor ✓ (solo Plan Empresarial)
+  • Dueño ✓ (según el plan: en Básico los reportes están bloqueados)
+  • Supervisor ✓ (el rol solo se puede crear en Plan Empresarial)
 
 Los roles Cajero y Bodeguero NO tienen acceso a reportes bajo ninguna 
 circunstancia. El sidebar del POS oculta la opción de reportes para estos roles.
@@ -83,7 +83,7 @@ circunstancia. El sidebar del POS oculta la opción de reportes para estos roles
 ================================================================================
 
 
-3.1 PLAN BÁSICO ($350/mes)
+3.1 PLAN BÁSICO (licencia $350, mensualidad $50)
 ==============================================================================
 
 ESTADO: COMPLETAMENTE BLOQUEADO
@@ -108,7 +108,7 @@ Respuesta técnica al intentar acceder:
   { "error": "Su plan actual no incluye acceso a reportes", "code": "PLAN_LIMIT" }
 
 
-3.2 PLAN INTERMEDIO ($750/mes)
+3.2 PLAN INTERMEDIO (licencia $750, mensualidad $200)
 ==============================================================================
 
 ESTADO: ACCESO LIMITADO — 3 REPORTES PREDEFINIDOS
@@ -170,7 +170,7 @@ Período de cálculo:
   acumulativos y se actualizan en tiempo real con cada nueva venta registrada.
 
 
-3.3 PLAN EMPRESARIAL ($1200/mes)
+3.3 PLAN EMPRESARIAL (licencia $1200, mensualidad $420)
 ==============================================================================
 
 ESTADO: ACCESO COMPLETO — REPORTES PREDEFINIDOS + PERSONALIZABLES

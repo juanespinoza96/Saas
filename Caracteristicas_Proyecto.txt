@@ -21,25 +21,36 @@ La arquitectura se divide en:
 2. CONTROLES Y VALIDACIONES PRINCIPALES
 ================================================================================
 
-2.1 Subscription Middleware (Control de Plan)
+2.1 Control de Plan (SubscriptionGuard)
 ------------------------------------------------------------------------------
 
-Cada comercio tiene un plan contratado (Básico $350, Intermedio $750, 
-Empresarial $1200) que limita qué puede hacer. El middleware intercepta cada 
-request y verifica:
+Cada comercio tiene un plan contratado que limita qué puede hacer. Cada plan
+tiene dos cobros distintos (valores acordados por el dueño; la mensualidad se
+implementa en la spec cobro-licencia-mensualidad-y-suspension):
+  • Licencia del software (pago único por cliente, no se prorratea):
+    Básico $350, Intermedio $750, Empresarial $1200.
+  • Mensualidad (corte el día 3; solo esta se prorratea en el primer ciclo):
+    Básico $50, Intermedio $200, Empresarial $420.
+El sistema verifica estos límites en cada operación afectada, mediante el
+servicio SubscriptionGuard que invocan los controladores (no existe un
+middleware de suscripción). Verifica:
 
   • Límite de usuarios: Básico = 2, Intermedio = 3 por sucursal, 
     Empresarial = ilimitado
   • Límite de sucursales: Básico = 1, Intermedio/Empresarial = ilimitadas
   • Límite de atributos dinámicos por categoría: Básico = 2, Intermedio = 5, 
     Empresarial = ilimitado
-  • Acceso a roles exclusivos: Dueño, Supervisor y Bodeguero solo existen 
-    en Plan Empresarial
+  • Roles permitidos por plan (fuente de verdad: RolePlanMapping):
+      Básico = Dueño y Cajero; Intermedio = Dueño, Gerente, Cajero y Bodeguero;
+      Empresarial = Dueño, Gerente, Supervisor, Cajero y Bodeguero
+      Se validan al crear usuarios, cambiar su rol o reactivarlos, no en cada
+      petición.
   • Reportes: Básico bloqueado (403), Intermedio = 3 predefinidos, 
     Empresarial = personalizables
-  • Facturación electrónica SRI: bloqueada para Plan Básico
+  • Facturación electrónica SRI: bloqueada para Plan Básico y durante la prueba
+    gratuita; además exige que el comercio tenga activada la facturación SRI
 
-Política clave: FAIL-SAFE. Si el middleware no puede determinar con certeza si 
+Política clave: FAIL-SAFE. Si el sistema no puede determinar con certeza si 
 se excede un límite (ej: error de BD), responde 403 preventivamente. Además hay 
 una validación secundaria en la capa de repositorio antes del INSERT para 
 protegerse de condiciones de carrera.
@@ -65,7 +76,7 @@ para acceso cross-tenant controlado.
 ASP.NET Core:
 
   SuperAdmin  → Gestionar comercios, planes, ver auditoría global
-  Dueño       → Todo dentro de su comercio (solo Plan Empresarial)
+  Dueño       → Todo dentro de su comercio (existe en todos los planes)
   Gerente     → Productos, usuarios, sucursales, reportes, configuración
   Supervisor  → Solo ver reportes y monitorear ventas en tiempo real
   Bodeguero   → Solo gestionar stock e inventario
@@ -73,6 +84,93 @@ ASP.NET Core:
 
 La separación es también a nivel de ruta: /api/tenants/ solo acepta roles POS, 
 /api/admin/ solo SuperAdmin.
+
+Matriz de acceso por ruta del POS (frontend)
+------------------------------------------------------------------------------
+OBJETIVO (pendiente de implementar): política por defecto DENEGAR. Una ruta que
+no figure en esta matriz no es accesible. Un rol no autorizado es redirigido a
+/dashboard, sin mensaje adicional. El guard del frontend es solo experiencia de
+usuario y nunca sustituye al backend.
+ESTADO ACTUAL: el menú oculta las opciones por rol, pero las rutas no tienen
+guard por rol (routes.tsx no pasa allowedRoles). Un rol no autorizado que
+escriba la URL abre la pantalla. En el backend, las escrituras validan el rol
+con políticas; las lecturas de catálogo y listados están abiertas a los 5 roles
+del POS. Detalle en docs/01-roles-y-accesos.md §8.
+
+  Ruta                          Dueño  Gerente  Supervisor  Bodeguero  Cajero
+  /dashboard                      ✓       ✓         ✓           ✓         ✓
+  /notificaciones                 ✓       ✓         ✓           ✓         ✓
+  /cambiar-password               ✓       ✓         ✓           ✓         ✓
+  /pos, /pos-bar                  ✓       ✓         -           -         ✓
+  /clientes                       ✓       ✓         -           -         ✓
+  /productos, /categorias         ✓       ✓         -           -         -
+  /inventario                     ✓       ✓         -           ✓         -
+  /reportes                       ✓       ✓         ✓           -         -
+  /usuarios, /sucursales          ✓       ✓         -           -         -
+  /configuracion                  ✓       ✓         -           -         -
+  /configuracion/comprobantes     ✓       ✓         -           -         -
+  /chat-ia                        ✓       ✓         -           -         -
+  /login, /recuperar-password     rutas públicas (sin autenticación)
+
+Notas:
+  • /configuracion/comprobantes: Dueño y Gerente. Confirmado en el backend
+    (GET y PUT /api/tenants/comprobantes/configuracion validan el rol dentro del
+    controlador). La ruta del frontend no tiene guard.
+  • /chat-ia: Dueño y Gerente, y además solo Plan Empresarial. Confirmado en el
+    backend (AIController: Roles = "Dueño,Gerente" + CanUseAIAsync; GET ai/health
+    es solo Dueño). Pendiente:
+    (a) el enlace "Chat IA" del encabezado hoy depende solo del plan, por lo que
+    un Cajero o Bodeguero de un comercio Empresarial lo ve y recibe 403; debe
+    mostrarse solo a Dueño y Gerente; (b) la ruta /chat-ia no tiene guard;
+    (c) sustituir Roles = "..." por una política con nombre (p. ej. CanUseAI).
+  • Restricciones por plan que se suman a la matriz por rol: Reportes bloqueado
+    en Básico; Supervisor solo en Empresarial; Gerente y Bodeguero desde
+    Intermedio; Chat IA solo en Empresarial.
+  • El rol Supervisor solo se puede crear en Empresarial. Pendiente: si un
+    comercio baja de plan, un Supervisor existente conserva hoy el acceso a
+    Reportes.
+
+Reglas de gestión de usuarios (habilitar y deshabilitar)
+------------------------------------------------------------------------------
+  • OBJETIVO: la lista de usuarios (GET /api/tenants/usuarios y /usuarios/limite)
+    solo puede consultarla el Dueño y el Gerente. HOY (pendiente): cualquier rol
+    del POS puede consultarla (política TenantAccess).
+  • Dueño: puede deshabilitar a cualquier otro usuario de su comercio. El único
+    Dueño del comercio nunca puede deshabilitarse.
+  • Gerente: puede deshabilitar a los demás usuarios, EXCEPTO a un Dueño y a sí
+    mismo.
+  • Supervisor, Bodeguero y Cajero no gestionan usuarios.
+  • Nadie puede deshabilitarse a sí mismo, tampoco el Dueño.
+  • Un Gerente no puede editar a un Dueño, ni a otro Gerente, ni cambiarse el
+    rol a sí mismo. Si hace falta editar a un Gerente, lo hace el Dueño.
+  • OBJETIVO: el Bodeguero no ve precios de productos (ni costo ni precio mínimo).
+    HOY (pendiente): GET /api/tenants/productos devuelve CostoProduccion y
+    PrecioMinimo a todos los roles y la pantalla /productos no tiene guard.
+  • En el plan Básico el Dueño no ve Reportes (Reportes está bloqueado en Básico).
+  • Estas reglas se validan en el backend (autoridad); la interfaz solo oculta
+    o desactiva las acciones no permitidas.
+  • Hoy el backend solo protege al único Dueño. Pendiente de implementar: que un
+    Gerente no pueda deshabilitar ni editar a un Dueño, a otro Gerente ni a sí
+    mismo, que no pueda cambiarse el rol y que nadie se deshabilite a sí mismo.
+    Hoy la única comprobación es CanManageUsers (Gerente y Dueño).
+
+Pendiente: refresco periódico del Dashboard para el Supervisor
+------------------------------------------------------------------------------
+  El Dashboard muestra el resumen de ventas del día solo al cargar la página.
+  Para cumplir "monitorear ventas en tiempo real" se necesita:
+  • Definir el retardo aceptable (propuesta: 30 s, configurable).
+  • Frontend: hook de sondeo (polling) que pause con la pestaña oculta, no
+    solape peticiones en curso, se cancele al desmontar, aplique retroceso ante
+    errores, detenga el sondeo ante 401 o VENTAS_VISIBILITY_RESTRICTED y muestre
+    "Actualizado hace X s" con botón de refresco manual.
+  • Sesión: las peticiones automáticas NO deben contar como actividad del
+    usuario ni renovar el token, para no anular el cierre por inactividad.
+  • Backend: hoy se descarga la lista completa de ventas del día en cada
+    consulta; conviene un endpoint ligero de resumen (total, cantidad, ticket
+    promedio) y una política explícita para monitorear ventas (Dueño, Gerente,
+    Supervisor y Cajero solo si MostrarVentasAlCajero).
+  • Pruebas: unitarias del hook con temporizadores simulados y E2E del refresco.
+  • Alternativa futura: notificación push (SSE o SignalR); mayor complejidad.
 
 
 2.4 Control de Stock con política configurable
