@@ -47,7 +47,7 @@ public class BillingPipelineIntegrationTests : IntegrationTestBase
 
         // Proportional cuota: (30 / 30) * 18 days remaining until July 3 = 18.00
         // (precioPlan / diasTotalesMes) * diasRestantes = (30 / 30) * 18 = 18.00
-        var expectedCuota = Math.Round((plan.Precio / 30m) * 18m, 2);
+        var expectedCuota = Math.Round((plan.CuotaMensual / 30m) * 18m, 2);
         Assert.Equal(expectedCuota, suscripcion.MontoCuota);
 
         // FechaProximoCorte should be July 3
@@ -69,7 +69,7 @@ public class BillingPipelineIntegrationTests : IntegrationTestBase
         var suscripcion = await billingService.ContratarPlanAsync(comercio.Id, plan.Id, fechaContratacion);
 
         // Assert: Full charge, not proportional
-        Assert.Equal(plan.Precio, suscripcion.MontoCuota);
+        Assert.Equal(plan.CuotaMensual, suscripcion.MontoCuota);
         Assert.False(suscripcion.EsProporcional);
 
         // FechaProximoCorte = next month's day 3
@@ -304,6 +304,7 @@ public class BillingPipelineIntegrationTests : IntegrationTestBase
         {
             Nombre = "Plan Empresarial",
             Precio = 30m,
+            CuotaMensual = 30m,
             LimiteUsuarios = 20,
             LimiteAtributos = 10
         };
@@ -317,6 +318,7 @@ public class BillingPipelineIntegrationTests : IntegrationTestBase
             PlanId = plan.Id,
             UsaFacturacionSRI = false,
             Activo = activo,
+            MotivoSuspension = activo ? null : SaasPOS.Domain.MotivosSuspension.Mora,
             FechaRegistro = DateTime.UtcNow
         };
         context.Comercios.Add(comercio);

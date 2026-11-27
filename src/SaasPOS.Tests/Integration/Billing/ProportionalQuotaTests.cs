@@ -137,6 +137,7 @@ public class ProportionalQuotaTests : IntegrationTestBase
         {
             Nombre = "Plan Test Proporcional",
             Precio = precio,
+            CuotaMensual = precio,
             LimiteUsuarios = 10,
             LimiteAtributos = 5
         };

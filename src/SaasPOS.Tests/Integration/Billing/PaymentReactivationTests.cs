@@ -224,6 +224,7 @@ public class PaymentReactivationTests : IntegrationTestBase
         {
             Nombre = "Plan Reactivation Test",
             Precio = 350m,
+            CuotaMensual = 350m,
             LimiteUsuarios = 10,
             LimiteAtributos = 5
         };
@@ -237,6 +238,7 @@ public class PaymentReactivationTests : IntegrationTestBase
             PlanId = plan.Id,
             UsaFacturacionSRI = false,
             Estado = "Suspendido", // Already suspended
+            MotivoSuspension = SaasPOS.Domain.MotivosSuspension.Mora,
             FechaRegistro = DateTime.UtcNow
         };
         context.Comercios.Add(comercio);
