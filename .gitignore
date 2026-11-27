@@ -92,3 +92,7 @@ Thumbs.db
 
 # ─── Diagramas generados localmente (no versionar) ────────────────
 docs/diagramas/
+
+# Log local de la API y notas locales para levantarla (no versionar)
+salida-*.txt
+Levantar Api.txt
