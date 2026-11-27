@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SaasPOS.Application.Interfaces;
 using SaasPOS.Infrastructure.Data;
 using Testcontainers.PostgreSql;
@@ -12,8 +12,8 @@ namespace SaasPOS.Tests.Integration;
 /// EnsureCreated()), este test levanta una base PostgreSQL LIMPIA y aplica las
 /// MIGRACIONES reales (MigrateAsync()), que son la fuente de verdad del esquema.
 /// Luego verifica dos cosas:
-///   1. Que __EFMigrationsHistory contiene las 3 migraciones vigentes:
-///      InitialBaseline + AddJtiRevocados + LogAuditoriaComercioIdNullable.
+///   1. Que __EFMigrationsHistory contiene las 4 migraciones vigentes:
+///      InitialBaseline + AddJtiRevocados + LogAuditoriaComercioIdNullable +`r`n///      AddCobroLicenciaMensualidadYMotivoSuspension.
 ///   2. Que, con esas migraciones aplicadas, el modelo de EF NO tiene cambios
 ///      pendientes (HasPendingModelChanges() == false), es decir, no hay deriva
 ///      entre lo que generan las migraciones y lo que describe el modelo actual.
@@ -88,15 +88,17 @@ public class SchemaDriftTests : IAsyncLifetime
         // Act: aplicar las migraciones reales (NO EnsureCreated).
         await context.Database.MigrateAsync();
 
-        // Assert 1: __EFMigrationsHistory contiene exactamente las 3 migraciones vigentes.
+        // Assert 1: __EFMigrationsHistory contiene exactamente las 4 migraciones vigentes.
         // Frente 1 (InitialBaseline) + Frente 2 (AddJtiRevocados) + el fix posterior
-        // LogAuditoriaComercioIdNullable (ver §Notes "Reconteo de migraciones").
+        // LogAuditoriaComercioIdNullable + AddCobroLicenciaMensualidadYMotivoSuspension
+        // (spec cobro-licencia-mensualidad-y-suspension, tarea 2).
         var migracionesAplicadas = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
-        Assert.Equal(3, migracionesAplicadas.Count);
+        Assert.Equal(4, migracionesAplicadas.Count);
         Assert.Contains(migracionesAplicadas, m => m.Contains("InitialBaseline"));
         Assert.Contains(migracionesAplicadas, m => m.Contains("AddJtiRevocados"));
         Assert.Contains(migracionesAplicadas, m => m.Contains("LogAuditoriaComercioIdNullable"));
+        Assert.Contains(migracionesAplicadas, m => m.Contains("AddCobroLicenciaMensualidadYMotivoSuspension"));
 
         // Assert 2: no hay deriva de esquema. Con las migraciones aplicadas, el modelo
         // de EF Core no debe reportar cambios pendientes. Ver el bloque de comentario de
