@@ -1,14 +1,16 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SaasPOS.Application.DTOs;
+using SaasPOS.Application.Helpers;
 using SaasPOS.Application.Interfaces;
+using SaasPOS.Domain;
 using SaasPOS.Domain.Entities;
 using SaasPOS.Infrastructure.Data;
 
 namespace SaasPOS.Infrastructure.Services;
 
 /// <summary>
-/// Implements billing logic: plan contracting with proportional cuota, daily cuts, and payments.
+/// Implementa la lógica de cobro: contratación de plan con cuota proporcional, cortes diarios y pagos.
 /// </summary>
 public class BillingService : IBillingService
 {
@@ -36,60 +38,28 @@ public class BillingService : IBillingService
     }
 
     /// <inheritdoc />
-    public decimal CalcularCuotaProporcional(decimal precioPlan, DateTime fechaContratacion)
+    public decimal CalcularCuotaProporcional(decimal mensualidad, DateTime fechaContratacion)
     {
-        // Req 19.3: Full charge when contracted on Dia_Corte (day 3)
-        if (fechaContratacion.Day == 3)
-            return precioPlan;
-
-        // Calculate next Dia_Corte (day 3)
-        DateTime proximoDia3;
-        if (fechaContratacion.Day < 3)
-        {
-            // Next day 3 is in the current month
-            proximoDia3 = new DateTime(fechaContratacion.Year, fechaContratacion.Month, 3);
-        }
-        else
-        {
-            // Next day 3 is in the next month
-            var nextMonth = fechaContratacion.AddMonths(1);
-            proximoDia3 = new DateTime(nextMonth.Year, nextMonth.Month, 3);
-        }
-
-        // Req 19.2: (PrecioPlan / DiasTotalesMes) × DiasRestantes rounded to 2 decimals
-        var diasTotalesMes = DateTime.DaysInMonth(fechaContratacion.Year, fechaContratacion.Month);
-        var diasRestantes = (proximoDia3 - fechaContratacion).Days;
-
-        var cuota = (precioPlan / diasTotalesMes) * diasRestantes;
-        return Math.Round(cuota, 2);
+        // Se convierte la fecha a DateOnly y se delega en la lógica pura del ciclo de cobro.
+        return CicloCobro.CuotaProporcional(mensualidad, DateOnly.FromDateTime(fechaContratacion));
     }
 
     /// <inheritdoc />
     public async Task<Suscripcion> ContratarPlanAsync(int comercioId, int planId, DateTime fechaContratacion)
     {
-        // 1. Get the plan to determine the price
+        // 1. Obtener el plan para conocer su mensualidad
         var plan = await _db.Planes
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.Id == planId)
             ?? throw new InvalidOperationException("Plan no encontrado");
 
-        // 2. Calculate cuota (Req 19.2, 19.3)
-        var cuota = CalcularCuotaProporcional(plan.Precio, fechaContratacion);
-        var esProporcional = fechaContratacion.Day != 3;
+        // 2. Calcular cuota, próximo corte y proporcionalidad con la lógica pura del ciclo
+        var ciclo = CicloCobro.Calcular(plan.CuotaMensual, DateOnly.FromDateTime(fechaContratacion));
+        var cuota = ciclo.Cuota;
+        var esProporcional = ciclo.EsProporcional;
+        var proximoCorte = ciclo.ProximoCorte;
 
-        // 3. Calculate FechaProximoCorte (next day 3) — Req 19.1
-        DateOnly proximoCorte;
-        if (fechaContratacion.Day < 3)
-        {
-            proximoCorte = new DateOnly(fechaContratacion.Year, fechaContratacion.Month, 3);
-        }
-        else
-        {
-            var nextMonth = fechaContratacion.AddMonths(1);
-            proximoCorte = new DateOnly(nextMonth.Year, nextMonth.Month, 3);
-        }
-
-        // 4. Create Suscripcion record (Req 19.13)
+        // 3. Crear el registro de Suscripcion
         var suscripcion = new Suscripcion
         {
             ComercioId = comercioId,
@@ -105,7 +75,7 @@ public class BillingService : IBillingService
         _db.Suscripciones.Add(suscripcion);
         await _db.SaveChangesAsync();
 
-        // 5. Audit log (Req 19.10)
+        // 5. Registro de auditoría (Req 19.10)
         await _auditService.RegistrarAsync(
             comercioId,
             null,
@@ -138,7 +108,7 @@ public class BillingService : IBillingService
         // ═══════════════════════════════════════════════════════════════
         await ProcesarTrialsAsync(hoy);
 
-        // 1. Find subscriptions where FechaProximoCorte is 7 days away → "Por vencer" (Req 19.4)
+        // 1. Buscar suscripciones cuyo FechaProximoCorte está a 7 días → "Por vencer" (Req 19.4)
         var sieteDiasAntes = hoy.AddDays(7);
         var porVencer = await _db.Suscripciones
             .IgnoreQueryFilters()
@@ -151,7 +121,7 @@ public class BillingService : IBillingService
             suscripcion.Estado = "Por vencer";
             await _notificationService.CrearNotificacionPagoProximoAsync(
                 suscripcion.ComercioId, suscripcion.MontoCuota, suscripcion.FechaProximoCorte.ToDateTime(TimeOnly.MinValue));
-            // Enqueue email (Req 19.11)
+            // Encolar correo (Req 19.11)
             foreach (var destinatario in await GetDestinatariosCobroAsync(suscripcion.ComercioId))
                 await _emailService.EnqueueAsync(suscripcion.ComercioId, destinatario,
                     "Suscripción por vencer",
@@ -160,7 +130,7 @@ public class BillingService : IBillingService
 
         await _db.SaveChangesAsync();
 
-        // 2. Find subscriptions where today IS the corte date and no payment → "En mora" (Req 19.5)
+        // 2. Buscar suscripciones cuya fecha de corte es hoy y sin pago → "En mora" (Req 19.5)
         var enMora = await _db.Suscripciones
             .IgnoreQueryFilters()
             .Include(s => s.Comercio)
@@ -179,7 +149,7 @@ public class BillingService : IBillingService
                     "Suscripción en mora",
                     $"Su suscripción ha entrado en mora. Realice el pago de ${suscripcion.MontoCuota} para mantener el acceso.");
 
-            // Req 19.10: Audit state change to "En mora"
+            // Req 19.10: Auditar el cambio de estado a "En mora"
             await _auditService.RegistrarAsync(
                 suscripcion.ComercioId,
                 null,
@@ -192,7 +162,7 @@ public class BillingService : IBillingService
 
         await _db.SaveChangesAsync();
 
-        // 3. Find subscriptions 3 days AFTER mora without payment → suspend (Req 19.6)
+        // 3. Buscar suscripciones 3 días DESPUÉS de la mora sin pago → suspender (Req 19.6)
         var tresDiasMora = hoy.AddDays(-3);
         var suspender = await _db.Suscripciones
             .IgnoreQueryFilters()
@@ -206,10 +176,12 @@ public class BillingService : IBillingService
         {
             suscripcion.Estado = "Suspendido";
             suscripcion.Comercio.Estado = "Suspendido";
-            // Invalidate all sessions (Req 19.6)
+            // Req 7.2: registrar que la suspensión es por mora (un pago de mensualidad la revierte)
+            suscripcion.Comercio.MotivoSuspension = MotivosSuspension.Mora;
+            // Invalidar todas las sesiones (Req 19.6)
             _jtiBlocklist.BlockAllForComercio(suscripcion.ComercioId);
 
-            // Req 19.10: Audit state change to "Suspendido"
+            // Req 19.10: Auditar el cambio de estado a "Suspendido"
             await _auditService.RegistrarAsync(
                 suscripcion.ComercioId,
                 null,
@@ -350,6 +322,8 @@ public class BillingService : IBillingService
                     var estadoAnterior = suscripcion.Estado;
                     suscripcion.Estado = "Trial_Expirado";
                     suscripcion.Comercio.Estado = "Suspendido";
+                    // Req 7.4: registrar que la suspensión es por trial expirado
+                    suscripcion.Comercio.MotivoSuspension = MotivosSuspension.TrialExpirado;
 
                     await _db.SaveChangesAsync();
 
@@ -392,7 +366,7 @@ public class BillingService : IBillingService
     /// <inheritdoc />
     public async Task<bool> RegistrarPagoAsync(int comercioId, PagoDto pago)
     {
-        // 1. Find the latest subscription for this comercio
+        // 1. Buscar la suscripción más reciente de este comercio
         var suscripcion = await _db.Suscripciones
             .IgnoreQueryFilters()
             .Where(s => s.ComercioId == comercioId)
@@ -401,44 +375,61 @@ public class BillingService : IBillingService
 
         if (suscripcion is null) return false;
 
-        // 2. Create PagoComercio record
+        // 2. Un trial no admite pago de mensualidad: debe convertirse primero. No se modifica nada.
+        if (suscripcion.Estado == "Trial" || suscripcion.Estado == "Trial_Expirado")
+            throw new InvalidOperationException("TRIAL_REQUIERE_CONVERSION");
+
+        // La mensualidad sale del plan vigente de la suscripción
+        var plan = await _db.Planes
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.Id == suscripcion.PlanId)
+            ?? throw new InvalidOperationException("Plan no encontrado");
+
+        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // 3. Crear el registro del pago como mensualidad
         var pagoRecord = new PagoComercio
         {
             ComercioId = comercioId,
             SuscripcionId = suscripcion.Id,
             MontoPagado = pago.MontoPagado,
-            FechaPago = DateOnly.FromDateTime(DateTime.UtcNow),
+            FechaPago = hoy,
             MetodoPago = pago.MetodoPago,
             Referencia = pago.Referencia,
-            RegistradoPor = pago.RegistradoPor
+            RegistradoPor = pago.RegistradoPor,
+            Tipo = TiposPago.Mensualidad
         };
         _db.PagosComercio.Add(pagoRecord);
 
-        // 3. Update subscription state to "Activa" (Req 19.9)
+        // 4. Actualizar la suscripción: el ciclo siguiente nunca es proporcional y usa la mensualidad completa
+        var corteAnterior = suscripcion.FechaProximoCorte;
         suscripcion.Estado = "Activa";
-        suscripcion.FechaUltimoPago = DateOnly.FromDateTime(DateTime.UtcNow);
+        suscripcion.FechaUltimoPago = hoy;
+        suscripcion.EsProporcional = false;
+        suscripcion.MontoCuota = plan.CuotaMensual;
 
-        // 4. Recalculate FechaProximoCorte (next month, day 3)
-        var today = DateTime.UtcNow;
-        if (today.Day < 3)
-            suscripcion.FechaProximoCorte = new DateOnly(today.Year, today.Month, 3);
-        else
-        {
-            var nextMonth = today.AddMonths(1);
-            suscripcion.FechaProximoCorte = new DateOnly(nextMonth.Year, nextMonth.Month, 3);
-        }
+        // 5. Nuevo corte: primer día 3 posterior al mayor entre hoy y el corte vigente.
+        //    Un pago antes del corte mueve el corte al mes siguiente y no deja la suscripción en mora.
+        var baseCorte = hoy > corteAnterior ? hoy : corteAnterior;
+        suscripcion.FechaProximoCorte = CicloCobro.ProximoCorteDesde(baseCorte);
 
-        // 5. Reactivate Comercio if suspended (Req 19.8)
+        // 6. Reactivar solo si la suspensión fue por mora. Con motivo Administrativa o vacío
+        //    (fail-safe) se registra el pago sin reactivar.
         var comercio = await _db.Comercios
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(c => c.Id == comercioId);
 
-        if (comercio != null && comercio.Estado == "Suspendido")
+        if (comercio != null
+            && comercio.Estado == "Suspendido"
+            && comercio.MotivoSuspension == MotivosSuspension.Mora)
+        {
             comercio.Estado = "Activo";
+            comercio.MotivoSuspension = null;
+        }
 
         await _db.SaveChangesAsync();
 
-        // 6. Audit log (Req 19.13)
+        // 7. Registro de auditoría (Req 19.13)
         await _auditService.RegistrarAsync(
             comercioId,
             pago.RegistradoPor,

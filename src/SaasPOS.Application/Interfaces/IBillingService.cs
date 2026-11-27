@@ -24,9 +24,9 @@ public interface IBillingService
     Task<bool> RegistrarPagoAsync(int comercioId, PagoDto pago);
 
     /// <summary>
-    /// Calculates the proportional cuota based on the plan price and contract date.
-    /// Returns full price when contracted on Dia_Corte (day 3).
-    /// Formula: (precioPlan / diasTotalesMes) × diasRestantes, rounded to 2 decimals.
+    /// Calcula la cuota proporcional a partir de la mensualidad y la fecha de contratación.
+    /// Devuelve la mensualidad completa si la fecha es el día de corte (día 3).
+    /// Fórmula: (mensualidad / díasTotalesMes) × díasRestantes, redondeada a 2 decimales.
     /// </summary>
-    decimal CalcularCuotaProporcional(decimal precioPlan, DateTime fechaContratacion);
+    decimal CalcularCuotaProporcional(decimal mensualidad, DateTime fechaContratacion);
 }
