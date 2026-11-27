@@ -12,6 +12,8 @@ public class Comercio
     public string? ClaveFirmaEncriptada { get; set; }
     /// <summary>Activo | Suspendido</summary>
     public string Estado { get; set; } = "Activo";
+    /// <summary>Motivo de la suspensión: Mora | Administrativa | TrialExpirado. Nulo si no está suspendido.</summary>
+    public string? MotivoSuspension { get; set; }
     public DateTime FechaRegistro { get; set; }
 
     /// <summary>Zona horaria IANA por defecto del comercio (ej: "America/Guayaquil"). Máximo 50 caracteres.</summary>

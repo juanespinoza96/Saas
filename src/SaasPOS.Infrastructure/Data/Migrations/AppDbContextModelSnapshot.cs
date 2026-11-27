@@ -195,6 +195,10 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Property<DateTime>("FechaRegistro")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("MotivoSuspension")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<int>("PlanId")
                         .HasColumnType("integer");
 
@@ -511,6 +515,9 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Property<decimal>("MontoPagado")
                         .HasColumnType("numeric(10,2)");
 
+                    b.Property<int?>("PlanId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Referencia")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -521,9 +528,21 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                     b.Property<int>("SuscripcionId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("Mensualidad");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("ComercioId");
+                    b.HasIndex("ComercioId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_pagoscomercio_licencia")
+                        .HasFilter("\"Tipo\" = 'Licencia'");
+
+                    b.HasIndex("PlanId");
 
                     b.HasIndex("RegistradoPor");
 
@@ -539,6 +558,11 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CuotaMensual")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(10,2)")
+                        .HasDefaultValue(0m);
 
                     b.Property<int>("LimiteAtributos")
                         .HasColumnType("integer");
@@ -1143,6 +1167,11 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SaasPOS.Domain.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SaasPOS.Domain.Entities.Usuario", "UsuarioRegistrador")
                         .WithMany("PagosRegistrados")
                         .HasForeignKey("RegistradoPor")
@@ -1156,6 +1185,8 @@ namespace SaasPOS.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Comercio");
+
+                    b.Navigation("Plan");
 
                     b.Navigation("Suscripcion");
 

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SaasPOS.Application.Interfaces;
+using SaasPOS.Domain;
 using SaasPOS.Domain.Entities;
 
 namespace SaasPOS.Infrastructure.Data;
@@ -49,6 +50,8 @@ public class AppDbContext : DbContext
             e.HasKey(p => p.Id);
             e.Property(p => p.Nombre).HasMaxLength(100).IsRequired();
             e.Property(p => p.Precio).HasColumnType("numeric(10,2)");
+            // Mensualidad del plan; 0 por defecto para filas existentes
+            e.Property(p => p.CuotaMensual).HasColumnType("numeric(10,2)").HasDefaultValue(0m);
         });
 
         // ── Comercios ────────────────────────────────────────────────────────
@@ -61,6 +64,8 @@ public class AppDbContext : DbContext
             e.Property(c => c.RutaFirmaElectronica).HasMaxLength(500);
             e.Property(c => c.ClaveFirmaEncriptada).HasMaxLength(500);
             e.Property(c => c.Estado).HasMaxLength(20).IsRequired().HasDefaultValue("Activo");
+            // Motivo de suspensión (Mora | Administrativa | TrialExpirado); nulo si no está suspendido
+            e.Property(c => c.MotivoSuspension).HasMaxLength(20);
             e.Property(c => c.ZonaHorariaDefecto).HasMaxLength(50);
             e.Ignore(c => c.Activo); // Computed property, not a DB column
             e.HasOne(c => c.Plan)
@@ -125,6 +130,21 @@ public class AppDbContext : DbContext
                 .WithMany(u => u.PagosRegistrados)
                 .HasForeignKey(p => p.RegistradoPor)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Tipo de pago (Mensualidad | Licencia); por defecto Mensualidad
+            e.Property(p => p.Tipo).HasMaxLength(30).IsRequired().HasDefaultValue(TiposPago.Mensualidad);
+
+            // Plan de la licencia pagada (nulo en mensualidades)
+            e.HasOne(p => p.Plan)
+                .WithMany()
+                .HasForeignKey(p => p.PlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Índice único parcial: máximo un pago de Licencia por comercio
+            e.HasIndex(p => p.ComercioId)
+                .IsUnique()
+                .HasDatabaseName("ux_pagoscomercio_licencia")
+                .HasFilter("\"Tipo\" = 'Licencia'");
 
             // Multi-tenant query filter
             e.HasQueryFilter(p => _tenantContext.IsSuperAdmin || p.ComercioId == _tenantContext.ComercioId);

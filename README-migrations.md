@@ -229,6 +229,7 @@ dotnet ef migrations script MigracionActual MigracionAnterior \
 | `20261014194408_InitialBaseline` | Baseline única: crea todo el esquema actual (tablas, índices, FKs) más los seeds de `ConfiguracionesComprobante` y el UPDATE legacy de `Ventas.TipoComprobante`. Colapsa la cadena anterior de 7 migraciones, que era inaplicable por un orden ALTER-antes-de-CREATE. |
 | `20261014210435_AddJtiRevocados` | Crea la tabla `JtiRevocados` (revocación de JTI individual persistida), con índice único sobre `Jti` e índice sobre `Expiracion`. |
 | `20261016025512_LogAuditoriaComercioIdNullable` | Hace `LogsAuditoria.ComercioId` nullable y cambia la FK a `ON DELETE SET NULL`, para registrar eventos de seguridad a nivel de sistema sin violar la integridad referencial. |
+| `20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension` | Separa licencia (pago único) y mensualidad: añade `Planes.CuotaMensual`, `Comercios.MotivoSuspension` (`Mora`, `Administrativa`, `TrialExpirado`), `PagosComercio.Tipo` (`Mensualidad`/`Licencia`) y `PagosComercio.PlanId` (FK `Restrict`), con índice único parcial `ux_pagoscomercio_licencia` (una licencia por comercio). Rellena `CuotaMensual` de los planes (50, 200, 420) y el motivo de los comercios ya suspendidos. |
 
 ---
 
@@ -237,7 +238,7 @@ dotnet ef migrations script MigracionActual MigracionAnterior \
 Para garantizar que las migraciones versionadas describen exactamente el modelo EF actual, existe un test de integración `SchemaDriftTests` en `src/SaasPOS.Tests/Integration/SchemaDriftTests.cs`. Sobre una base limpia levantada con Testcontainers.PostgreSQL, el test:
 
 1. Aplica **todas** las migraciones con `MigrateAsync()`.
-2. Verifica que las 3 migraciones vigentes queden registradas en `__EFMigrationsHistory`.
+2. Verifica que las 4 migraciones vigentes queden registradas en `__EFMigrationsHistory`.
 3. Afirma `Assert.False(context.Database.HasPendingModelChanges())`.
 
 ### Por qué `HasPendingModelChanges()` y no inspección de `information_schema`
@@ -301,6 +302,8 @@ src/SaasPOS.Infrastructure/
 │       ├── 20261014210435_AddJtiRevocados.Designer.cs
 │       ├── 20261016025512_LogAuditoriaComercioIdNullable.cs # LogsAuditoria.ComercioId nullable
 │       ├── 20261016025512_LogAuditoriaComercioIdNullable.Designer.cs
+│       ├── 20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension.cs  # Licencia, mensualidad y motivo de suspensión
+│       ├── 20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension.Designer.cs
 │       └── AppDbContextModelSnapshot.cs                     # Estado actual del modelo
 ```
 

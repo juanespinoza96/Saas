@@ -831,5 +831,109 @@ BEGIN
     VALUES ('20261016025512_LogAuditoriaComercioIdNullable', '9.0.0');
     END IF;
 END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    DROP INDEX "IX_PagosComercio_ComercioId";
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    ALTER TABLE "Planes" ADD "CuotaMensual" numeric(10,2) NOT NULL DEFAULT 0.0;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    ALTER TABLE "PagosComercio" ADD "PlanId" integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    ALTER TABLE "PagosComercio" ADD "Tipo" character varying(30) NOT NULL DEFAULT 'Mensualidad';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    ALTER TABLE "Comercios" ADD "MotivoSuspension" character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+
+    UPDATE "Planes"
+    SET "CuotaMensual" = CASE "Nombre"
+        WHEN 'Básico' THEN 50
+        WHEN 'Intermedio' THEN 200
+        WHEN 'Empresarial' THEN 420
+    END
+    WHERE "Nombre" IN ('Básico', 'Intermedio', 'Empresarial');
+
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+
+    UPDATE "Comercios" c
+    SET "MotivoSuspension" = CASE
+        WHEN s."Estado" = 'Suspendido' THEN 'Mora'
+        WHEN s."Estado" = 'Trial_Expirado' THEN 'TrialExpirado'
+        ELSE 'Administrativa'
+    END
+    FROM "Comercios" c2
+    LEFT JOIN LATERAL (
+        SELECT "Estado"
+        FROM "Suscripciones"
+        WHERE "ComercioId" = c2."Id"
+        ORDER BY "FechaInicio" DESC, "Id" DESC
+        LIMIT 1
+    ) s ON TRUE
+    WHERE c."Id" = c2."Id"
+      AND c."Estado" = 'Suspendido'
+      AND c."MotivoSuspension" IS NULL;
+
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    CREATE INDEX "IX_PagosComercio_PlanId" ON "PagosComercio" ("PlanId");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    CREATE UNIQUE INDEX ux_pagoscomercio_licencia ON "PagosComercio" ("ComercioId") WHERE "Tipo" = 'Licencia';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    ALTER TABLE "PagosComercio" ADD CONSTRAINT "FK_PagosComercio_Planes_PlanId" FOREIGN KEY ("PlanId") REFERENCES "Planes" ("Id") ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20261127155103_AddCobroLicenciaMensualidadYMotivoSuspension', '9.0.0');
+    END IF;
+END $EF$;
 COMMIT;
 
